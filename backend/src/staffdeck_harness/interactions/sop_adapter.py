@@ -20,6 +20,16 @@ from typing import Any
 from staffdeck_harness.composition.compiler import CompositionSnapshot, SopExecutionPlan
 from staffdeck_harness.sop.fields import slot_field_names
 
+# 每个 SOP 步骤在结束前必须调用 submit_step_result 提交结构化结果。
+# 在执行时（节点指令语境）注入，确保无论 SOP 来源/是否已落库，模型都收到该硬性约束，
+# 避免“只回话不提交”触发 HARNESS_ACTION_INVALID。不写入存储，避免污染 authored 内容与编辑链路。
+SOP_STEP_SUBMIT_RULE = (
+    "【强制】本步骤结束前必须且只能调用一次 mcp__staffdeck__submit_step_result 提交结构化结果，"
+    "绝不要只靠文字说明结束本步骤。参数：status 取 completed/awaiting_user/handoff/failed；"
+    "reply_fragment 为给用户的话；slot_updates 写入本步骤需落库的字段；"
+    "next_step_id 按上方“可选的下一步”填写（终止步骤留空）。"
+)
+
 
 @dataclass(frozen=True)
 class ExecutionSlice:
@@ -46,6 +56,7 @@ class ExecutionSlice:
         instruction = str(self.node.get("instruction") or "").strip()
         if instruction:
             lines.append(instruction)
+        lines.append(SOP_STEP_SUBMIT_RULE)
         if self.expected_user_info:
             lines.append("需要收集的信息：" + "、".join(self.expected_user_info))
         if self.slots:

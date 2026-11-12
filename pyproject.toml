@@ -1,0 +1,15 @@
+[project]
+name = "staffdeck"
+version = "0.1.0"
+description = "StaffDeck — enterprise skill-agent-loop platform: FastAPI backend with the Harness v3 pluggable runtime."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "skill-agent-loop-backend",
+]
+
+[tool.uv.sources]
+skill-agent-loop-backend = { workspace = true }
+
+[tool.uv.workspace]
+members = ["backend"]

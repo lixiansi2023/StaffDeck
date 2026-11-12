@@ -75,7 +75,7 @@ def prepare(*, backend=True, cli_link=True):
             run([*pm, 'exec', 'vite', 'build', '--base=/'], directory, env)
     engine = ROOT / 'harness-engine'
     pm = package_manager(engine)
-    run([*pm, 'install', '--frozen-lockfile'] if pm[-1] != 'npm' else [*pm, 'ci', '--no-audit'], engine, env)
+    run([*pm, 'install', '--frozen-lockfile', '--ignore-scripts'] if pm[-1] != 'npm' else [*pm, 'ci', '--no-audit'], engine, env)
     # Build every runtime project with its normal strict TypeScript checks.
     # The upstream root aggregate also checks its development website/tests;
     # these do not emit runtime files and are not part of a customer package.

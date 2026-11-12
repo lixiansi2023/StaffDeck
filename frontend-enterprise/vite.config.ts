@@ -15,6 +15,41 @@ export default defineConfig(({ mode }) => {
       },
     },
     base: '/',
+    build: {
+      rolldownOptions: {
+        output: {
+          codeSplitting: {
+            groups: [
+              {
+                name: 'vendor-react',
+                test: /node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler|@remix-run)[\\/]/,
+                priority: 30,
+              },
+              {
+                name: 'vendor-pinyin',
+                test: /node_modules[\\/]pinyin-pro[\\/]/,
+                priority: 30,
+              },
+              {
+                name: 'vendor-radix',
+                test: /node_modules[\\/](radix-ui|@radix-ui)[\\/]/,
+                priority: 30,
+              },
+              {
+                name: 'vendor-ui',
+                test: /node_modules[\\/](lucide-react|sonner|qrcode|clsx|tailwind-merge|class-variance-authority)[\\/]/,
+                priority: 30,
+              },
+              {
+                name: 'vendor',
+                test: /node_modules[\\/]/,
+                priority: 20,
+              },
+            ],
+          },
+        },
+      },
+    },
     test: {
       setupFiles: ['./src/test/setup.ts'],
       environmentOptions: {

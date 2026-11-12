@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
   BrowserRouter,
   Navigate,
@@ -37,41 +37,9 @@ import {
   employeeProfile,
   preferredEmployeeAgent,
 } from "./employee";
-import AccountsPage from "./pages/AccountsPage";
-import AgentsPage from "./pages/AgentsPage";
-import ChannelsPage from "./pages/ChannelsPage";
-import ChatPage from "./pages/chat/ChatPage";
-import ChatGalleryPage from "./pages/chat/ChatGalleryPage";
-import DashboardPage from "./pages/dashboard/DashboardPage";
 import { loadEmployeeDirectory } from './api/employee-directory';
 import EmptyEmployeeState from "./components/EmptyEmployeeState";
-import DistillPage from "./pages/DistillPage";
-import GeneralSkillsPage, {
-  GeneralSkillEditPage,
-  GeneralSkillNewPage,
-} from "./pages/GeneralSkillsPage";
-import KnowledgeManagePage, { KnowledgeAddPage } from "./pages/KnowledgePage";
 import LoginPage from "./pages/LoginPage";
-import ModelsPage from "./pages/ModelsPage";
-import RuntimeSettingsPage from "./pages/RuntimeSettingsPage";
-import AdminPage from "./pages/admin/AdminPage";
-import OpenPlatformPage from "./pages/OpenPlatformPage";
-import PersonaPage from "./pages/PersonaPage";
-import SkillsPage from "./pages/SkillsPage";
-import TeamChatPage from "./pages/TeamChatPage";
-import TeamDetailPage from "./pages/TeamDetailPage";
-import TeamsPage from "./pages/TeamsPage";
-import {
-  ScheduledTaskEditPage,
-  ScheduledTaskNewPage,
-} from "./pages/dashboard/ScheduledTasksTab";
-import ToolsPage, {
-  McpServerEditPage,
-  McpServerNewPage,
-  ToolEditPage,
-  ToolNewPage,
-  ToolTestPage,
-} from "./pages/ToolsPage";
 import { useIsMobile } from "./hooks/use-mobile";
 import {
   Dialog,
@@ -106,6 +74,65 @@ import {
 } from "@/lib/enterprise-ui";
 import type { AgentProfileRead, ModelConfigRead, TeamRead } from "./types";
 import { useI18n } from "./i18n";
+
+// 路由级代码分割：外壳保持轻量，各页面在首次访问时按需加载。
+const AccountsPage = lazy(() => import("./pages/AccountsPage"));
+const AgentsPage = lazy(() => import("./pages/AgentsPage"));
+const ChannelsPage = lazy(() => import("./pages/ChannelsPage"));
+const ChatPage = lazy(() => import("./pages/chat/ChatPage"));
+const ChatGalleryPage = lazy(() => import("./pages/chat/ChatGalleryPage"));
+const DashboardPage = lazy(() => import("./pages/dashboard/DashboardPage"));
+const DistillPage = lazy(() => import("./pages/DistillPage"));
+const GeneralSkillsPage = lazy(() => import("./pages/GeneralSkillsPage"));
+const GeneralSkillEditPage = lazy(() =>
+  import("./pages/GeneralSkillsPage").then((module) => ({ default: module.GeneralSkillEditPage })),
+);
+const GeneralSkillNewPage = lazy(() =>
+  import("./pages/GeneralSkillsPage").then((module) => ({ default: module.GeneralSkillNewPage })),
+);
+const KnowledgeManagePage = lazy(() => import("./pages/KnowledgePage"));
+const KnowledgeAddPage = lazy(() =>
+  import("./pages/KnowledgePage").then((module) => ({ default: module.KnowledgeAddPage })),
+);
+const ModelsPage = lazy(() => import("./pages/ModelsPage"));
+const RuntimeSettingsPage = lazy(() => import("./pages/RuntimeSettingsPage"));
+const AdminPage = lazy(() => import("./pages/admin/AdminPage"));
+const OpenPlatformPage = lazy(() => import("./pages/OpenPlatformPage"));
+const PersonaPage = lazy(() => import("./pages/PersonaPage"));
+const SkillsPage = lazy(() => import("./pages/SkillsPage"));
+const TeamChatPage = lazy(() => import("./pages/TeamChatPage"));
+const TeamDetailPage = lazy(() => import("./pages/TeamDetailPage"));
+const TeamsPage = lazy(() => import("./pages/TeamsPage"));
+const ScheduledTaskEditPage = lazy(() =>
+  import("./pages/dashboard/ScheduledTasksTab").then((module) => ({ default: module.ScheduledTaskEditPage })),
+);
+const ScheduledTaskNewPage = lazy(() =>
+  import("./pages/dashboard/ScheduledTasksTab").then((module) => ({ default: module.ScheduledTaskNewPage })),
+);
+const ToolsPage = lazy(() => import("./pages/ToolsPage"));
+const McpServerEditPage = lazy(() =>
+  import("./pages/ToolsPage").then((module) => ({ default: module.McpServerEditPage })),
+);
+const McpServerNewPage = lazy(() =>
+  import("./pages/ToolsPage").then((module) => ({ default: module.McpServerNewPage })),
+);
+const ToolEditPage = lazy(() =>
+  import("./pages/ToolsPage").then((module) => ({ default: module.ToolEditPage })),
+);
+const ToolNewPage = lazy(() =>
+  import("./pages/ToolsPage").then((module) => ({ default: module.ToolNewPage })),
+);
+const ToolTestPage = lazy(() =>
+  import("./pages/ToolsPage").then((module) => ({ default: module.ToolTestPage })),
+);
+
+function RouteFallback() {
+  return (
+    <div className="flex min-h-[120px] w-full items-center justify-center text-[13px] text-[#858b9c]">
+      加载中…
+    </div>
+  );
+}
 
 const ENTERPRISE_SIDEBAR_STORAGE_KEY = "ultrarag_enterprise_sidebar_expanded";
 const MODEL_CONFIGS_UPDATED_EVENT = "ultrarag-enterprise-model-configs-updated";
@@ -562,12 +589,14 @@ function Shell({
                 : "persistent-distill hidden"
             }
           >
-            <DistillPage
-              active={isDistillRoute}
-              searchParamsOverride={distillSearchParams}
-              currentUser={auth.user}
-              onLogout={onLogout}
-            />
+            <Suspense fallback={<RouteFallback />}>
+              <DistillPage
+                active={isDistillRoute}
+                searchParamsOverride={distillSearchParams}
+                currentUser={auth.user}
+                onLogout={onLogout}
+              />
+            </Suspense>
           </div>}
           {!isDistillRoute && showEmployeeEmptyState && (
             <EmptyEmployeeState
@@ -577,7 +606,8 @@ function Shell({
             />
           )}
           {!isDistillRoute && !showEmployeeEmptyState && (
-            <Routes>
+            <Suspense fallback={<RouteFallback />}>
+              <Routes>
               <Route
                 path="/enterprise"
                 element={<Navigate to="/enterprise/dashboard" replace />}
@@ -835,7 +865,8 @@ function Shell({
                 path="*"
                 element={<Navigate to="/enterprise/dashboard" replace />}
               />
-            </Routes>
+              </Routes>
+            </Suspense>
           )}
         </div>
       </div>
@@ -1017,24 +1048,30 @@ function AuthedApp({
   }
   if (location.pathname === EnterpriseRoute.Admin || location.pathname.startsWith(`${EnterpriseRoute.Admin}/`)) {
     return isEnterpriseAdmin(auth.user)
-      ? <AdminPage currentUser={auth.user} onLogout={onLogout} />
+      ? (
+        <Suspense fallback={<RouteFallback />}>
+          <AdminPage currentUser={auth.user} onLogout={onLogout} />
+        </Suspense>
+      )
       : <Navigate to={EnterpriseRoute.Gallery} replace />;
   }
   if (location.pathname.startsWith(EnterpriseRoute.Workspace)) {
     return (
-      <Routes>
-        <Route
-          path="/workspace"
-          element={<Navigate to="/workspace/gallery" replace />}
-        />
-        <Route path="/workspace/gallery" element={<ChatGalleryPage />} />
-        <Route path="/workspace/chat" element={<ChatPage />} />
-        <Route
-          path="/workspace/chat/draft/:draftAgentId"
-          element={<ChatPage />}
-        />
-        <Route path="/workspace/chat/:sessionId" element={<ChatPage />} />
-      </Routes>
+      <Suspense fallback={<RouteFallback />}>
+        <Routes>
+          <Route
+            path="/workspace"
+            element={<Navigate to="/workspace/gallery" replace />}
+          />
+          <Route path="/workspace/gallery" element={<ChatGalleryPage />} />
+          <Route path="/workspace/chat" element={<ChatPage />} />
+          <Route
+            path="/workspace/chat/draft/:draftAgentId"
+            element={<ChatPage />}
+          />
+          <Route path="/workspace/chat/:sessionId" element={<ChatPage />} />
+        </Routes>
+      </Suspense>
     );
   }
   return <Shell auth={auth} onLogout={onLogout} guidesCompleted={guidesCompleted} />;
