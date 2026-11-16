@@ -75,6 +75,8 @@ function stubRadixPointerApis() {
 function renderSidebar(props: {
   isAdmin?: boolean;
   selectedAgentId: string;
+  selected?: string;
+  onNavigate?: (route: string) => void;
   onSelectAgent?: (value: string) => void;
   scopeTeams?: TeamRead[];
 }) {
@@ -83,8 +85,8 @@ function renderSidebar(props: {
       <TooltipProvider>
         <SidebarProvider>
           <AppSidebar
-            selected="/enterprise/dashboard"
-            onNavigate={() => {}}
+            selected={props.selected ?? '/enterprise/dashboard'}
+            onNavigate={props.onNavigate ?? (() => {})}
             isAdmin={props.isAdmin ?? false}
             scopeAgents={[agent]}
             scopeTeams={props.scopeTeams ?? [team]}
@@ -106,16 +108,50 @@ afterEach(() => {
 
 it('customer builds omit the framework console but keep business management navigation', () => {
   product.frameworkManagement = false;
-  renderSidebar({ selectedAgentId: agent.id, isAdmin: true });
+  renderSidebar({ selectedAgentId: agent.id, isAdmin: true, selected: '/enterprise/models' });
   expect(screen.queryByText('管理后台')).toBeNull();
   expect(screen.getAllByText('账号管理').length).toBeGreaterThan(0);
   expect(screen.getAllByText('模型配置').length).toBeGreaterThan(0);
-  expect(screen.getAllByText('我的数字员工').length).toBeGreaterThan(0);
 });
 
 it('operator builds retain the framework console', () => {
-  renderSidebar({ selectedAgentId: agent.id, isAdmin: true });
+  renderSidebar({ selectedAgentId: agent.id, isAdmin: true, selected: '/enterprise/models' });
   expect(screen.getAllByText('管理后台').length).toBeGreaterThan(0);
+});
+
+it('derives the active tab from the route: system route shows config, workspace route shows employee nav', () => {
+  const { unmount } = renderSidebar({ selectedAgentId: agent.id, isAdmin: true, selected: '/enterprise/models' });
+  expect(screen.getAllByText('模型配置').length).toBeGreaterThan(0);
+  expect(screen.queryByText('我的数字员工')).toBeNull();
+  expect(screen.getByRole('tab', { name: /系统配置/ }).getAttribute('aria-selected')).toBe('true');
+  unmount();
+
+  renderSidebar({ selectedAgentId: agent.id, isAdmin: true, selected: '/enterprise/dashboard' });
+  expect(screen.getAllByText('我的数字员工').length).toBeGreaterThan(0);
+  expect(screen.queryByText('模型配置')).toBeNull();
+  expect(screen.getByRole('tab', { name: /工作台/ }).getAttribute('aria-selected')).toBe('true');
+});
+
+it('switching tabs navigates to the landing route of the target tab', async () => {
+  const user = userEvent.setup();
+  const onNavigate = vi.fn();
+  renderSidebar({ selectedAgentId: agent.id, isAdmin: true, onNavigate });
+  await user.click(screen.getByRole('tab', { name: /系统配置/ }));
+  expect(onNavigate).toHaveBeenCalledWith('/enterprise/models');
+});
+
+it('hides the tabs and system config for non-admin users', () => {
+  renderSidebar({ selectedAgentId: agent.id, isAdmin: false });
+  expect(screen.queryByRole('tablist')).toBeNull();
+  expect(screen.queryByText('模型配置')).toBeNull();
+  expect(screen.queryByText('账号管理')).toBeNull();
+  expect(screen.getAllByText('我的数字员工').length).toBeGreaterThan(0);
+});
+
+it('renders a neutral workspace mark instead of the brand logo in the header', () => {
+  renderSidebar({ selectedAgentId: agent.id, isAdmin: false });
+  expect(screen.getAllByLabelText('工作台').length).toBeGreaterThan(0);
+  expect(screen.queryByText('StaffDeck')).toBeNull();
 });
 
 beforeEach(() => {

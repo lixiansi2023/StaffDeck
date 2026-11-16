@@ -23,8 +23,7 @@ import { cn } from '@/lib/utils';
 import { FRAMEWORK_MANAGEMENT_INCLUDED } from '@/lib/productFeatures';
 import { teamIdFromScope, toTeamScope } from '@/lib/agent-scope-storage';
 import EmployeeAvatar from './EmployeeAvatar';
-import BrandLogo from './BrandLogo';
-import StaffdeckIcon from './StaffdeckIcon';
+import StaffdeckIcon, { type StaffdeckIconName } from './StaffdeckIcon';
 import { employeeDisplayNameWithCreator, employeeProfile, staffdeckDisplayText } from '../employee';
 import { EnterpriseRoute } from '../enums/routes';
 import type { AgentProfileRead, ChatSession, TeamRead } from '../types';
@@ -91,9 +90,20 @@ const SYSTEM_NAV: NavItem[] = [
   { route: EnterpriseRoute.Admin, label: '管理后台', Icon: IconAdmin },
 ];
 
-function primaryNavItems(isAdmin: boolean): NavItem[] {
-  const system = SYSTEM_NAV.filter((item) => FRAMEWORK_MANAGEMENT_INCLUDED || item.route !== EnterpriseRoute.Admin);
-  return isAdmin ? [...PRIMARY_NAV, ...system] : PRIMARY_NAV;
+function systemNavItems(isAdmin: boolean): NavItem[] {
+  if (!isAdmin) return [];
+  return SYSTEM_NAV.filter((item) => FRAMEWORK_MANAGEMENT_INCLUDED || item.route !== EnterpriseRoute.Admin);
+}
+
+type ManagementTab = 'workspace' | 'system';
+
+const SYSTEM_ROUTES = new Set<string>(SYSTEM_NAV.map((item) => item.route));
+const WORKSPACE_TAB_ROUTE = EnterpriseRoute.Platform;
+const SYSTEM_TAB_ROUTE = EnterpriseRoute.Models;
+
+/** Tab is derived from the current route so deep links and browser back/forward stay in sync. */
+function activeManagementTab(selected: string, isAdmin: boolean): ManagementTab {
+  return isAdmin && SYSTEM_ROUTES.has(selected) ? 'system' : 'workspace';
 }
 
 export type AppSidebarManagementProps = {
@@ -185,10 +195,12 @@ function CardNavButton({
   item,
   selected,
   onNavigate,
+  attention,
 }: {
   item: NavItem;
   selected: string;
   onNavigate: (route: string) => void;
+  attention?: boolean;
 }) {
   return (
     <SidebarMenuItem>
@@ -201,11 +213,15 @@ function CardNavButton({
           'h-[36px] gap-[8px] rounded-[12px] px-[12px] py-[4px] text-[12px] text-sidebar-foreground',
           'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
           'data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground data-active:font-normal',
+          attention && selected !== item.route && 'bg-[#fff7e8] text-[#8a4b00] ring-1 ring-[#ffd58a]',
           'group-data-[collapsible=icon]:px-0!',
         )}
       >
         <item.Icon className="size-[14px]!" />
         <span>{item.label}</span>
+        {attention && (
+          <span className="ml-auto size-[6px] rounded-full bg-[#f59e0b] group-data-[collapsible=icon]:hidden" />
+        )}
       </SidebarMenuButton>
     </SidebarMenuItem>
   );
@@ -216,6 +232,116 @@ function GroupLabel({ children }: { children: string }) {
     <span className="px-[8px] pt-[6px] pb-[2px] text-[10px] leading-none text-[#464c5e] group-data-[collapsible=icon]:hidden">
       {children}
     </span>
+  );
+}
+
+/** Generic product mark: a neutral grid glyph plus a plain workspace label, no brand logo. */
+function GenericBrand({ markOnly = false }: { markOnly?: boolean }) {
+  return (
+    <span className="flex items-center gap-[8px] overflow-hidden p-[4px]">
+      <span className="grid size-[28px] shrink-0 place-items-center rounded-[8px] bg-[#eef1f8] text-[#464c5e]">
+        <StaffdeckIcon name="grid" size={18} />
+      </span>
+      {!markOnly && (
+        <span className="flex flex-col leading-none group-data-[collapsible=icon]:hidden">
+          <strong className="text-[15px] font-semibold leading-none text-[#18181a]">工作台</strong>
+        </span>
+      )}
+    </span>
+  );
+}
+
+const MANAGEMENT_TABS: { key: ManagementTab; label: string; icon: StaffdeckIconName }[] = [
+  { key: 'workspace', label: '工作台', icon: 'grid' },
+  { key: 'system', label: '系统配置', icon: 'tool' },
+];
+
+function ManagementTabs({
+  active,
+  systemAttention,
+  onSelect,
+}: {
+  active: ManagementTab;
+  systemAttention: boolean;
+  onSelect: (tab: ManagementTab) => void;
+}) {
+  return (
+    <div
+      role="tablist"
+      aria-label="侧边栏分区"
+      className="flex gap-[4px] rounded-[12px] border-[0.5px] border-[#e3e7f1] bg-[#f6f7fa] p-[3px]"
+    >
+      {MANAGEMENT_TABS.map((tab) => {
+        const selected = active === tab.key;
+        return (
+          <button
+            key={tab.key}
+            type="button"
+            role="tab"
+            aria-selected={selected}
+            data-guide-target={`sidebar-tab-${tab.key}`}
+            onClick={() => onSelect(tab.key)}
+            className={cn(
+              'relative flex h-[30px] flex-1 items-center justify-center gap-[5px] rounded-[9px] text-[12px] transition-colors',
+              selected
+                ? 'bg-white font-medium text-[#18181a] shadow-[0px_1px_3px_rgba(0,0,0,0.06)]'
+                : 'text-[#757f9c] hover:text-[#464c5e]',
+            )}
+          >
+            <StaffdeckIcon name={tab.icon} size={13} />
+            <span>{tab.label}</span>
+            {tab.key === 'system' && systemAttention && !selected && (
+              <span className="size-[6px] rounded-full bg-[#f59e0b]" />
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function CollapsedManagementTabs({
+  active,
+  systemAttention,
+  onSelect,
+}: {
+  active: ManagementTab;
+  systemAttention: boolean;
+  onSelect: (tab: ManagementTab) => void;
+}) {
+  return (
+    <div role="tablist" aria-label="侧边栏分区" className="flex flex-col gap-[4px]">
+      {MANAGEMENT_TABS.map((tab) => {
+        const selected = active === tab.key;
+        return (
+          <Tooltip key={tab.key}>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                aria-label={tab.label}
+                onClick={() => onSelect(tab.key)}
+                className={cn(
+                  'relative flex size-[32px] shrink-0 items-center justify-center rounded-[10px] text-sidebar-foreground transition-colors',
+                  selected
+                    ? 'border-[0.5px] border-[#e3e7f1] bg-white shadow-[0px_0px_5px_rgba(0,0,0,0.05)]'
+                    : 'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+                )}
+              >
+                <StaffdeckIcon name={tab.icon} size={16} />
+                {tab.key === 'system' && systemAttention && !selected && (
+                  <span className="absolute -right-[2px] -top-[2px] size-[7px] rounded-full bg-[#f59e0b] ring-[1.5px] ring-sidebar" />
+                )}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right" align="center">
+              {tab.label}
+            </TooltipContent>
+          </Tooltip>
+        );
+      })}
+    </div>
   );
 }
 
@@ -516,13 +642,17 @@ function CollapsedSidebar({
         ? '未选择'
         : employeeDisplayNameWithCreator(sidebarAgent)
       : '未选择';
-  const primaryItems = primaryNavItems(isAdmin);
+  const systemItems = systemNavItems(isAdmin);
+  const activeTab = activeManagementTab(selected, isAdmin);
+  const selectTab = (tab: ManagementTab) => {
+    onNavigate(tab === 'system' ? SYSTEM_TAB_ROUTE : WORKSPACE_TAB_ROUTE);
+  };
 
   return (
-    <div className="flex h-full w-(--sidebar-width-icon) shrink-0 flex-col items-center gap-[32px] px-[16px] pt-[42px] pb-[10px]">
+    <div className="flex h-full w-(--sidebar-width-icon) shrink-0 flex-col items-center gap-[24px] px-[16px] pt-[42px] pb-[10px]">
       <div className="flex w-full flex-col items-center gap-[10px]">
-        <button type="button" title="开放广场" className="flex items-center justify-center p-[10px]">
-          <BrandLogo markOnly />
+        <button type="button" title="工作台" aria-label="工作台" className="flex items-center justify-center p-[10px]">
+          <GenericBrand markOnly />
         </button>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -541,49 +671,72 @@ function CollapsedSidebar({
         </Tooltip>
       </div>
 
-      <div className="flex w-full flex-col items-center gap-[12px]">
-        {primaryItems.map((item) => (
-          <CollapsedNavButton
-            key={item.route}
-            item={item}
-            selected={selected}
-            onNavigate={onNavigate}
-            radius={10}
-            iconSize={16}
-            attention={modelSetupAttention && item.route === EnterpriseRoute.Models}
-          />
-        ))}
-        <div className="h-px w-full bg-sidebar-border" />
-      </div>
+      {isAdmin && (
+        <CollapsedManagementTabs
+          active={activeTab}
+          systemAttention={Boolean(modelSetupAttention)}
+          onSelect={selectTab}
+        />
+      )}
 
       <div className="flex min-h-0 w-full flex-1 flex-col items-center justify-between">
-        <div className="flex w-[38px] flex-col items-center gap-[8px] rounded-[10px] border-[0.5px] border-[#e3e7f1] bg-white px-[2px] pt-[6px] pb-[8px]">
-          <CollapsedAgentSwitcher
-            sidebarAgent={sidebarAgent}
-            scopeAgents={scopeAgents}
-            scopeTeams={scopeTeams}
-            selectedAgentId={selectedAgentId}
-            onSelectAgent={onSelectAgent}
-            nameLabel={nameLabel}
-          />
-
-          <div className="h-px w-[28px] bg-sidebar-border" />
-
-          <div className="flex flex-col items-center gap-[4px]">
-            <CollapsedGroupLabel>资料</CollapsedGroupLabel>
-            {PROFILE_NAV.map((item) => (
-              <CollapsedNavButton
-                key={item.route}
-                item={item}
-                selected={selected}
-                onNavigate={onNavigate}
-                radius={10}
-                iconSize={14}
+        {activeTab === 'workspace' ? (
+          <>
+            <div className="flex w-[38px] flex-col items-center gap-[8px] rounded-[10px] border-[0.5px] border-[#e3e7f1] bg-white px-[2px] pt-[6px] pb-[8px]">
+              <CollapsedAgentSwitcher
+                sidebarAgent={sidebarAgent}
+                scopeAgents={scopeAgents}
+                scopeTeams={scopeTeams}
+                selectedAgentId={selectedAgentId}
+                onSelectAgent={onSelectAgent}
+                nameLabel={nameLabel}
               />
-            ))}
 
-            <CollapsedGroupLabel>能力</CollapsedGroupLabel>
-            {CAPABILITY_NAV.map((item) => (
+              <div className="h-px w-[28px] bg-sidebar-border" />
+
+              <div className="flex flex-col items-center gap-[4px]">
+                <CollapsedGroupLabel>导航</CollapsedGroupLabel>
+                {PRIMARY_NAV.map((item) => (
+                  <CollapsedNavButton
+                    key={item.route}
+                    item={item}
+                    selected={selected}
+                    onNavigate={onNavigate}
+                    radius={10}
+                    iconSize={14}
+                  />
+                ))}
+
+                <CollapsedGroupLabel>资料</CollapsedGroupLabel>
+                {PROFILE_NAV.map((item) => (
+                  <CollapsedNavButton
+                    key={item.route}
+                    item={item}
+                    selected={selected}
+                    onNavigate={onNavigate}
+                    radius={10}
+                    iconSize={14}
+                  />
+                ))}
+
+                <CollapsedGroupLabel>能力</CollapsedGroupLabel>
+                {CAPABILITY_NAV.map((item) => (
+                  <CollapsedNavButton
+                    key={item.route}
+                    item={item}
+                    selected={selected}
+                    onNavigate={onNavigate}
+                    radius={10}
+                    iconSize={14}
+                  />
+                ))}
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="flex w-[38px] flex-col items-center gap-[4px] rounded-[10px] border-[0.5px] border-[#e3e7f1] bg-white px-[2px] pt-[6px] pb-[8px]">
+            <CollapsedGroupLabel>配置</CollapsedGroupLabel>
+            {systemItems.map((item) => (
               <CollapsedNavButton
                 key={item.route}
                 item={item}
@@ -591,10 +744,11 @@ function CollapsedSidebar({
                 onNavigate={onNavigate}
                 radius={10}
                 iconSize={14}
+                attention={modelSetupAttention && item.route === EnterpriseRoute.Models}
               />
             ))}
           </div>
-        </div>
+        )}
 
         <div className="flex items-center justify-center pb-[20px]">
           <Tooltip>
@@ -632,7 +786,11 @@ function ManagementSidebar({
 }: AppSidebarManagementProps) {
   const { toggleSidebar, state } = useSidebar();
   const brandCollapsed = useMemo(() => state === 'collapsed', [state]);
-  const primaryItems = useMemo(() => primaryNavItems(isAdmin), [isAdmin]);
+  const systemItems = useMemo(() => systemNavItems(isAdmin), [isAdmin]);
+  const activeTab = activeManagementTab(selected, isAdmin);
+  const selectTab = (tab: ManagementTab) => {
+    onNavigate(tab === 'system' ? SYSTEM_TAB_ROUTE : WORKSPACE_TAB_ROUTE);
+  };
 
   if (brandCollapsed) {
     return (
@@ -659,8 +817,8 @@ function ManagementSidebar({
       <div className="flex h-full w-(--sidebar-width) shrink-0 flex-col">
       <SidebarHeader className="gap-[24px] px-[20px] pt-[42px] group-data-[collapsible=icon]:px-[20px]">
         <div className="flex items-center justify-between">
-          <button type="button" title="开放广场">
-            <BrandLogo wordmarkClassName="group-data-[collapsible=icon]:hidden" />
+          <button type="button" title="工作台" aria-label="工作台">
+            <GenericBrand />
           </button>
           {!brandCollapsed && (
             <button
@@ -675,54 +833,73 @@ function ManagementSidebar({
           )}
         </div>
 
-        <div className="flex flex-col gap-[18px]">
-          <SidebarMenu className="gap-[10px]">
-            {primaryItems.map((item) => (
-              <PrimaryNavButton
-                key={item.route}
-                item={item}
-                selected={selected}
-                onNavigate={onNavigate}
-                attention={modelSetupAttention && item.route === EnterpriseRoute.Models}
-              />
-            ))}
-          </SidebarMenu>
-          <div className="h-px w-full bg-sidebar-border group-data-[collapsible=icon]:hidden" />
-        </div>
+        {isAdmin && (
+          <ManagementTabs
+            active={activeTab}
+            systemAttention={Boolean(modelSetupAttention)}
+            onSelect={selectTab}
+          />
+        )}
       </SidebarHeader>
 
       <SidebarContent className="px-[20px] group-data-[collapsible=icon]:px-[20px]">
-        <div
-          className={cn(
-            'mt-[36px] mb-[24px] flex flex-col gap-[8px] rounded-[20px] border-[0.5px] border-[#e3e7f1] bg-sidebar px-[4px] pt-[6px] pb-[8px]',
-            'group-data-[collapsible=icon]:mt-[24px] group-data-[collapsible=icon]:border-transparent group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:shadow-none',
-          )}
-        >
-          <AgentSwitcher
-            sidebarAgent={sidebarAgent}
-            scopeAgents={scopeAgents}
-            scopeTeams={scopeTeams}
-            selectedAgentId={selectedAgentId}
-            onSelectAgent={onSelectAgent}
-          />
-          <div className="mx-[8px] h-px bg-sidebar-border group-data-[collapsible=icon]:hidden" />
-
-          <div className="flex flex-col gap-[2px] px-[10px] group-data-[collapsible=icon]:px-0">
-            <GroupLabel>基本资料</GroupLabel>
-            <SidebarMenu className="gap-[2px]">
-              {PROFILE_NAV.map((item) => (
-                <CardNavButton key={item.route} item={item} selected={selected} onNavigate={onNavigate} />
+        {activeTab === 'workspace' ? (
+          <>
+            <SidebarMenu className="mt-[36px] gap-[10px]">
+              {PRIMARY_NAV.map((item) => (
+                <PrimaryNavButton
+                  key={item.route}
+                  item={item}
+                  selected={selected}
+                  onNavigate={onNavigate}
+                />
               ))}
             </SidebarMenu>
+            <div className="my-[24px] h-px w-full bg-sidebar-border" />
 
-            <GroupLabel>员工能力</GroupLabel>
+            <div className="mb-[24px] flex flex-col gap-[8px] rounded-[20px] border-[0.5px] border-[#e3e7f1] bg-sidebar px-[4px] pt-[6px] pb-[8px]">
+              <AgentSwitcher
+                sidebarAgent={sidebarAgent}
+                scopeAgents={scopeAgents}
+                scopeTeams={scopeTeams}
+                selectedAgentId={selectedAgentId}
+                onSelectAgent={onSelectAgent}
+              />
+              <div className="mx-[8px] h-px bg-sidebar-border" />
+
+              <div className="flex flex-col gap-[2px] px-[10px]">
+                <GroupLabel>基本资料</GroupLabel>
+                <SidebarMenu className="gap-[2px]">
+                  {PROFILE_NAV.map((item) => (
+                    <CardNavButton key={item.route} item={item} selected={selected} onNavigate={onNavigate} />
+                  ))}
+                </SidebarMenu>
+
+                <GroupLabel>员工能力</GroupLabel>
+                <SidebarMenu className="gap-[2px]">
+                  {CAPABILITY_NAV.map((item) => (
+                    <CardNavButton key={item.route} item={item} selected={selected} onNavigate={onNavigate} />
+                  ))}
+                </SidebarMenu>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="mt-[36px] mb-[24px] flex flex-col gap-[2px] px-[10px]">
+            <GroupLabel>系统配置</GroupLabel>
             <SidebarMenu className="gap-[2px]">
-              {CAPABILITY_NAV.map((item) => (
-                <CardNavButton key={item.route} item={item} selected={selected} onNavigate={onNavigate} />
+              {systemItems.map((item) => (
+                <CardNavButton
+                  key={item.route}
+                  item={item}
+                  selected={selected}
+                  onNavigate={onNavigate}
+                  attention={modelSetupAttention && item.route === EnterpriseRoute.Models}
+                />
               ))}
             </SidebarMenu>
           </div>
-        </div>
+        )}
       </SidebarContent>
 
       <SidebarFooter className="px-[20px] pb-[20px] group-data-[collapsible=icon]:px-[20px]">
@@ -1125,7 +1302,7 @@ function CollapsedChatSidebar({
     <div className="flex h-full w-(--sidebar-width-icon) shrink-0 flex-col items-center gap-[32px] px-[20px] pt-[42px] pb-[10px]">
       <div className="flex w-full flex-col items-center gap-[10px]">
         <button type="button" title="数字员工广场" onClick={onOpenGallery} className="flex items-center justify-center p-[10px]">
-          <BrandLogo markOnly />
+          <GenericBrand markOnly />
         </button>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -1326,7 +1503,7 @@ function ChatSidebarVariant({
         <SidebarHeader className="gap-[24px] px-[20px] pt-[42px]">
           <div className="flex items-center justify-between">
             <button type="button" title="数字员工广场" onClick={onOpenGallery}>
-              <BrandLogo />
+              <GenericBrand />
             </button>
             <button
               type="button"

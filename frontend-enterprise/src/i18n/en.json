@@ -3969,5 +3969,10 @@
   "已复制 SOP，可编辑后另存为新 SOP": "SOP copied. Edit it and save as a new SOP",
   "新节点": "New node",
   "（副本）": " (Copy)",
-  "已复制 SOP": "SOP copied"
+  "已复制 SOP": "SOP copied",
+  "工作台": "Workspace",
+  "系统配置": "System Configuration",
+  "侧边栏分区": "Sidebar sections",
+  "导航": "Navigation",
+  "配置": "Configuration"
 }
