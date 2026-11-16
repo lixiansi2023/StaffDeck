@@ -1288,11 +1288,15 @@ def _validate_module_composition(db: Session, tenant_id: str, agent_id: str) -> 
     from staffdeck_harness.contracts.sources import SourceContext
     from staffdeck_harness.modules.registry import get_registry
     from app.config import get_settings
-    from staffdeck_harness.contracts.errors import ModuleSdkError
+    from app.core.slot_errors import describe_slot_error
+    from staffdeck_harness.contracts.errors import ModuleSdkError, RequiredSlotMissing, SlotNotBound
 
     db.flush()
     try:
         validate_configuration(get_registry(get_settings()), db, SourceContext(tenant_id, agent_id))
+    except (SlotNotBound, RequiredSlotMissing) as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"模块装配无效：{describe_slot_error(db, tenant_id, exc)}") from exc
     except (ModuleSdkError, ValueError, LookupError) as exc:
         db.rollback()
         raise HTTPException(status_code=400, detail=f"模块装配无效：{exc}") from exc

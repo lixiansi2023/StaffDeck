@@ -32,6 +32,24 @@ def test_supervisor_uses_platform_specific_executables() -> None:
     assert supervisor._vite_executable("darwin") == ROOT_DIR / "frontend-enterprise/node_modules/.bin/vite"
 
 
+def test_supervisor_binds_ui_servers_to_all_interfaces(monkeypatch) -> None:
+    monkeypatch.delenv("APP_HOST", raising=False)
+    monkeypatch.delenv("ENTERPRISE_HOST", raising=False)
+    supervisor = _load_script("dev_supervisor")
+
+    assert supervisor.APP_HOST == "0.0.0.0"
+    assert supervisor.ENTERPRISE_HOST == "0.0.0.0"
+    assert supervisor.url_host(supervisor.APP_HOST) == "127.0.0.1"
+
+    monkeypatch.setattr(supervisor, "SINGLE_PORT", True)
+    app_command = supervisor.build_services()[0].command
+    assert app_command[app_command.index("--host") + 1] == "0.0.0.0"
+
+    monkeypatch.setattr(supervisor, "SINGLE_PORT", False)
+    enterprise_command = supervisor.build_services()[1].command
+    assert enterprise_command[enterprise_command.index("--host") + 1] == "0.0.0.0"
+
+
 def test_pid_alive_recognizes_current_process() -> None:
     process_utils = _load_script("process_utils")
 

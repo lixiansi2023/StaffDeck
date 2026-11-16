@@ -97,16 +97,22 @@ router = APIRouter(
 def validate_published_sop(db: Session, tenant_id: str, agent_id: str | None, sop_id: str) -> None:
     """Validate the published instance through the same module sources/compiler as runtime."""
     from app.config import get_settings
+    from app.core.slot_errors import describe_slot_error
     from staffdeck_harness.composition.sources import validate_configuration
-    from staffdeck_harness.contracts.errors import ModuleSdkError
+    from staffdeck_harness.contracts.errors import ModuleSdkError, RequiredSlotMissing, SlotNotBound
     from staffdeck_harness.contracts.sources import SourceContext
     from staffdeck_harness.modules.registry import get_registry
     db.flush()
+    skill = db.get(Skill, sop_id)
+    sop_name = skill.name if skill is not None else None
     try:
         validate_configuration(get_registry(get_settings()), db, SourceContext(tenant_id, agent_id), sop_id=sop_id)
+    except (SlotNotBound, RequiredSlotMissing) as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"SOP 模块装配无效：{describe_slot_error(db, tenant_id, exc, sop_name=sop_name, sop_id=sop_id)}") from exc
     except (ModuleSdkError, ValueError, LookupError) as exc:
         db.rollback()
-        raise HTTPException(status_code=400, detail=f"SOP 模块装配无效：{exc}") from exc
+        raise HTTPException(status_code=400, detail=f"SOP 模块装配无效：{describe_slot_error(db, tenant_id, exc, sop_name=sop_name, sop_id=sop_id)}") from exc
 
 
 def _read_persisted_skill_content(value):

@@ -1,0 +1,1379 @@
+{
+  "skill_id": "merged_procurement_compliance_flow",
+  "name": "招采合规一体化全流程（合并）",
+  "version": "1.0.0",
+  "business_domain": "采购与供应链合规",
+  "description": "将小明名下的采购合规相关 SOP 合并为一条贯穿流程：合作方入库尽调 → 采购资料收集与附件点验 → 采购方式/资格条件/评分细则合规 → 招标文件文本/保证金/商务合同核心条款/异议澄清弃标校验 → 合同条款风险审查与条款修改建议 → 签约材料齐备性校验 → 协审结论汇总与最终报告。否决类统一终止于否决结论节点，风险/异常类统一转人工。",
+  "capability_scope": "general",
+  "step_timeout_seconds": 1800,
+  "trigger_intents": [
+    "采购文件合规审查",
+    "招采合规全流程",
+    "合并采购合规校验",
+    "供应商入库尽调",
+    "合同合规审查"
+  ],
+  "user_utterance_examples": [
+    "帮我做一份采购文件的全面合规审查",
+    "按合并流程跑一遍招采合规检查"
+  ],
+  "goal": [
+    "按采购合规生命周期顺序完成全链路校验",
+    "任一分项否决即终止并给出否决结论与整改建议",
+    "风险/异常统一升级人工，其余汇总为最终合规报告"
+  ],
+  "required_info": [
+    "project_name",
+    "attachments",
+    "budget_amount"
+  ],
+  "slot_filling_policy": {
+    "enabled": true,
+    "extract_scope": "all_skill_expected_user_info",
+    "multi_slot_per_turn": true,
+    "skip_satisfied_steps": true,
+    "description": "跨节点传递各分项校验结论与综合审批结果。",
+    "target_info": [
+      "check_results",
+      "review_items",
+      "final_conclusion"
+    ]
+  },
+  "response_rules": [
+    "否决类结论明确列出否决原因与整改建议",
+    "关注类风险项汇总提示但不阻断流程",
+    "最终结论结构化输出总体状态与报告链接"
+  ],
+  "interruption_policy": {
+    "allow_interrupt": "true",
+    "description": "允许用户在任意节点补充材料后继续。",
+    "strategy": "resume_from_last_state"
+  },
+  "start_node_id": "m01",
+  "terminal_node_ids": [
+    "m_reject",
+    "m_handoff",
+    "m35",
+    "m30",
+    "m07"
+  ],
+  "nodes": [
+    {
+      "allowed_actions": [
+        "extract_slots"
+      ],
+      "condition": "always",
+      "expected_user_info": [
+        "company_name",
+        "unified_social_credit_code"
+      ],
+      "instruction": "目标导向收集新合作方的公司名称和统一社会信用代码。若用户单句中包含多项信息，需一次性提取并落槽；若某项已满足则直接跳过，推进至下一缺失信息或工具调用。将本步骤作为目标而不是固定话术；如果用户当前消息、历史 slots 或路由意图已满足本步骤，直接写入对应 slot 并继续到下一缺失信息、工具调用或最终回复，不要重复确认。",
+      "knowledge_scope": {},
+      "metadata": {},
+      "name": "收集合作方基本信息",
+      "node_id": "m01",
+      "optional": false,
+      "retry_policy": {
+        "max_retries": 3,
+        "strategy": "polite_reminder"
+      },
+      "type": "collect_info",
+      "sub_sop_id": null,
+      "capability_refs": {}
+    },
+    {
+      "allowed_actions": [
+        "call_tool:contract.archive_query",
+        "continue_flow"
+      ],
+      "condition": "slots_filled(company_name, unified_social_credit_code)",
+      "expected_user_info": [],
+      "instruction": "当公司名称和统一社会信用代码均收集完整时，直接调用合同判例检索工具查询过往合作与涉诉记录。工具参数满足时立即执行，成功后基于返回结果推进至尽调判定节点，不得停留等待。将本步骤作为目标而不是固定话术；如果用户当前消息、历史 slots 或路由意图已满足本步骤，直接写入对应 slot 并继续到下一缺失信息、工具调用或最终回复，不要重复确认。工具参数满足时直接调用工具；工具成功后必须基于工具结果进入最终回复，不要停留在“请稍候”或“正在处理”。",
+      "knowledge_scope": {},
+      "metadata": {
+        "tool_params_mapping": {
+          "query": "company_name + unified_social_credit_code"
+        }
+      },
+      "name": "检索历史合同与涉诉记录",
+      "node_id": "m02",
+      "optional": false,
+      "retry_policy": {
+        "max_retries": 2,
+        "strategy": "fallback_to_manual"
+      },
+      "type": "tool_call",
+      "sub_sop_id": null,
+      "capability_refs": {}
+    },
+    {
+      "allowed_actions": [
+        "route"
+      ],
+      "condition": "tool_success",
+      "expected_user_info": [],
+      "instruction": "对照反商业贿赂制度及工具返回的历史合作与涉诉记录进行综合研判。若记录显示无重大违规或涉诉风险，判定为通过；若发现商业贿赂嫌疑、重大诉讼或黑名单记录，判定为存在风险。根据判定结果路由至对应处理节点。将本步骤作为目标而不是固定话术；如果用户当前消息、历史 slots 或路由意图已满足本步骤，直接写入对应 slot 并继续到下一缺失信息、工具调用或最终回复，不要重复确认。",
+      "knowledge_scope": {},
+      "metadata": {},
+      "name": "尽调合规判定",
+      "node_id": "m03",
+      "optional": false,
+      "retry_policy": {},
+      "type": "decision",
+      "sub_sop_id": null,
+      "capability_refs": {}
+    },
+    {
+      "allowed_actions": [
+        "answer_user"
+      ],
+      "condition": "compliance_result == pass",
+      "expected_user_info": [],
+      "instruction": "尽调通过后，向用户明确反馈合规核查结果，并出具正式入库意见。回复需包含核查结论、关键依据及后续入库指引，形成业务闭环。将本步骤作为目标而不是固定话术；如果用户当前消息、历史 slots 或路由意图已满足本步骤，直接写入对应 slot 并继续到下一缺失信息、工具调用或最终回复，不要重复确认。",
+      "knowledge_scope": {},
+      "metadata": {},
+      "name": "出具入库意见",
+      "node_id": "m04",
+      "optional": false,
+      "retry_policy": {},
+      "type": "response",
+      "sub_sop_id": null,
+      "capability_refs": {}
+    },
+    {
+      "node_id": "m05",
+      "type": "collect_info",
+      "name": "收集采购项目基础审查资料",
+      "instruction": "用户一次提供多个信息时，需要同时提取并写入对应slot，不要重复追问已提供的信息；当前节点已满足时直接进入下一缺失信息、工具调用、知识检索或最终回复。收集采购项目名称、全套附件清单、采购决策纪要文件、采购（招标）文件全文、采购呈批表、项目预算金额这些必要审查资料，缺失的字段逐一引导用户补充提交。将本步骤作为目标而不是固定话术；如果用户当前消息、历史 slots 或路由意图已满足本步骤，直接写入对应 slot 并继续到下一缺失信息、工具调用或最终回复，不要重复确认。",
+      "optional": false,
+      "condition": "用户触发采购文件合规审查意图，尚未收集齐全部必要审查资料",
+      "expected_user_info": [
+        "procurement_project_name",
+        "procurement_attachment_list",
+        "procurement_decision_minutes",
+        "procurement_bidding_document",
+        "procurement_approval_form",
+        "project_budget_amount"
+      ],
+      "allowed_actions": [
+        "ask_user",
+        "continue_flow",
+        "handoff_human"
+      ],
+      "knowledge_scope": {},
+      "capability_refs": {
+        "general_skill_ids": [],
+        "tool_ids": [],
+        "knowledge_base_ids": [],
+        "required_general_skill_ids": [],
+        "required_tool_ids": [],
+        "required_knowledge_base_ids": []
+      },
+      "retry_policy": {
+        "max_retry_count": 3,
+        "retry_prompt": "您还未提交【{缺失字段名}】相关资料，请补充后继续审查流程。"
+      },
+      "metadata": {},
+      "sub_sop_id": null,
+      "assignee_user_id": null,
+      "assignee_notify_channel": null
+    },
+    {
+      "node_id": "m06",
+      "type": "decision",
+      "name": "附件完整性校验结果判断",
+      "instruction": "判断附件校验结果是否存在采购方案文件或采购（招标）文件缺失的否决情形，若存在直接进入否决结论节点，若仅决策纪要缺失或全部附件齐全则进入下一审查环节。将本步骤作为目标而不是固定话术；如果用户当前消息、历史 slots 或路由意图已满足本步骤，直接写入对应 slot 并继续到下一缺失信息、工具调用或最终回复，不要重复确认。",
+      "optional": false,
+      "condition": "已完成附件资料齐全性校验",
+      "expected_user_info": [],
+      "allowed_actions": [
+        "answer_user",
+        "handoff_human"
+      ],
+      "knowledge_scope": {},
+      "capability_refs": {
+        "general_skill_ids": [],
+        "tool_ids": [],
+        "knowledge_base_ids": [],
+        "required_general_skill_ids": [],
+        "required_tool_ids": [],
+        "required_knowledge_base_ids": []
+      },
+      "retry_policy": {
+        "max_retry_count": 0
+      },
+      "metadata": {},
+      "sub_sop_id": null,
+      "assignee_user_id": null,
+      "assignee_notify_channel": null
+    },
+    {
+      "node_id": "m07",
+      "type": "response",
+      "name": "输出附件缺失否决结论",
+      "instruction": "向用户明确反馈本次采购必备附件点验未通过，因采购方案文件或采购（招标）文件全文缺失，本次审核予以否决，告知用户需要补充对应缺失文件后再重新提交审核。将本步骤作为目标而不是固定话术；如果用户当前消息、历史 slots 或路由意图已满足本步骤，直接写入对应 slot 并继续到下一缺失信息、工具调用或最终回复，不要重复确认。",
+      "optional": false,
+      "condition": "采购方案文件缺失 或 采购（招标）文件全文缺失",
+      "expected_user_info": [],
+      "allowed_actions": [
+        "answer_user"
+      ],
+      "knowledge_scope": {},
+      "capability_refs": {
+        "general_skill_ids": [],
+        "tool_ids": [],
+        "knowledge_base_ids": [],
+        "required_general_skill_ids": [],
+        "required_tool_ids": [],
+        "required_knowledge_base_ids": []
+      },
+      "retry_policy": {
+        "max_retry_count": 0
+      },
+      "metadata": {},
+      "sub_sop_id": null,
+      "assignee_user_id": null,
+      "assignee_notify_channel": null
+    },
+    {
+      "node_id": "m08",
+      "type": "response",
+      "name": "输出决策纪要缺失提示结论",
+      "instruction": "向用户明确反馈本次采购必备附件点验结果，采购方案文件、采购（招标）文件全文均已齐全，但决策纪要文件包缺失，给予用户提示，请用户尽快补充决策纪要相关材料。将本步骤作为目标而不是固定话术；如果用户当前消息、历史 slots 或路由意图已满足本步骤，直接写入对应 slot 并继续到下一缺失信息、工具调用或最终回复，不要重复确认。",
+      "optional": false,
+      "condition": "采购方案文件、采购（招标）文件全文均已提供，决策纪要文件包缺失",
+      "expected_user_info": [],
+      "allowed_actions": [
+        "answer_user"
+      ],
+      "knowledge_scope": {},
+      "capability_refs": {
+        "general_skill_ids": [],
+        "tool_ids": [],
+        "knowledge_base_ids": [],
+        "required_general_skill_ids": [],
+        "required_tool_ids": [],
+        "required_knowledge_base_ids": []
+      },
+      "retry_policy": {
+        "max_retry_count": 0
+      },
+      "metadata": {},
+      "sub_sop_id": null,
+      "assignee_user_id": null,
+      "assignee_notify_channel": null
+    },
+    {
+      "node_id": "m09",
+      "type": "decision",
+      "name": "校验采购方式一致性",
+      "instruction": "比对从采购决策纪要中提取的采购方式与从呈批表中提取的采购方式是否一致，如不一样，检验状为：预警，否则状态为：通过。根据比对结果执行对应分支流程。将本步骤作为目标而不是固定话术；如果用户当前消息、历史 slots 或路由意图已满足本步骤，直接写入对应 slot 并继续到下一缺失信息、工具调用或最终回复，不要重复确认。",
+      "optional": false,
+      "condition": "已完成两份文档的采购方式提取",
+      "expected_user_info": [],
+      "allowed_actions": [
+        "answer_user",
+        "handoff_human"
+      ],
+      "knowledge_scope": {},
+      "capability_refs": {
+        "general_skill_ids": [],
+        "tool_ids": [],
+        "knowledge_base_ids": [],
+        "required_general_skill_ids": [],
+        "required_tool_ids": [],
+        "required_knowledge_base_ids": []
+      },
+      "retry_policy": {
+        "max_retry_count": 0
+      },
+      "metadata": {},
+      "sub_sop_id": null,
+      "assignee_user_id": null,
+      "assignee_notify_channel": null
+    },
+    {
+      "node_id": "m10",
+      "type": "decision",
+      "name": "判定资格条件是否违规",
+      "instruction": "结合提取的资格条款、采购项目需求、合规审查标准以及地域性限制排查结果，逐条比对资格条件与采购需求的关联性，判断是否存在特定品牌/专利/产地、指定特定客户或项目业绩、资质等级超出项目规模、地域性限制四类违规情形。如有即为预警,如无即为通过。将本步骤作为目标而不是固定话术；如果用户当前消息、历史 slots 或路由意图已满足本步骤，直接写入对应 slot 并继续到下一缺失信息、工具调用或最终回复，不要重复确认。",
+      "optional": false,
+      "condition": "已完成地域性限制排查",
+      "expected_user_info": [],
+      "allowed_actions": [
+        "answer_user",
+        "handoff_human"
+      ],
+      "knowledge_scope": {},
+      "capability_refs": {
+        "general_skill_ids": [],
+        "tool_ids": [],
+        "knowledge_base_ids": [],
+        "required_general_skill_ids": [],
+        "required_tool_ids": [],
+        "required_knowledge_base_ids": []
+      },
+      "retry_policy": {
+        "max_retry_count": 0
+      },
+      "metadata": {},
+      "sub_sop_id": null,
+      "assignee_user_id": null,
+      "assignee_notify_channel": null
+    },
+    {
+      "node_id": "m11",
+      "type": "decision",
+      "name": "违规条款判定",
+      "instruction": "1、出现特定（单一）品牌名、专利、特定产地；\n2、业绩要求指定特定客户、特定项目；业绩要求超出项目规模；\n3、技术参数高于行业通用标准 ；\n4、存在地域性限制条件； 如存在即列为关注，输出校验结论数据将本步骤作为目标而不是固定话术；如果用户当前消息、历史 slots 或路由意图已满足本步骤，直接写入对应 slot 并继续到下一缺失信息、工具调用或最终回复，不要重复确认。",
+      "optional": false,
+      "condition": "文件关键条款提取完成",
+      "expected_user_info": [],
+      "allowed_actions": [
+        "reasoning"
+      ],
+      "knowledge_scope": {},
+      "capability_refs": {
+        "general_skill_ids": [],
+        "tool_ids": [],
+        "knowledge_base_ids": [],
+        "required_general_skill_ids": [],
+        "required_tool_ids": [],
+        "required_knowledge_base_ids": []
+      },
+      "retry_policy": {
+        "max_retry_count": 0
+      },
+      "metadata": {
+        "flow_position": {
+          "x": 416,
+          "y": 4301
+        }
+      },
+      "sub_sop_id": null,
+      "assignee_user_id": null,
+      "assignee_notify_channel": null
+    },
+    {
+      "node_id": "m12",
+      "type": "tool_call",
+      "name": "读取采购招标文件全文内容",
+      "instruction": "工具参数满足时直接调用工具，工具成功后基于工具结果进入招标文件文本检查环节，不要停留在等待状态。调用read_attachment工具提取采购招标文件的完整文本内容，用于后续多维度合规校验。将本步骤作为目标而不是固定话术；如果用户当前消息、历史 slots 或路由意图已满足本步骤，直接写入对应 slot 并继续到下一缺失信息、工具调用或最终回复，不要重复确认。工具参数满足时直接调用工具；工具成功后必须基于工具结果进入最终回复，不要停留在“请稍候”或“正在处理”。",
+      "optional": false,
+      "condition": "采购方式合规校验未触发否决情形",
+      "expected_user_info": [],
+      "allowed_actions": [
+        "call_tool:zheng_ce.read_attachment",
+        "continue_flow"
+      ],
+      "knowledge_scope": {},
+      "capability_refs": {
+        "general_skill_ids": [],
+        "tool_ids": [
+          "tool_6a4fe522745c4317"
+        ],
+        "knowledge_base_ids": [],
+        "required_general_skill_ids": [],
+        "required_tool_ids": [
+          "tool_6a4fe522745c4317"
+        ],
+        "required_knowledge_base_ids": []
+      },
+      "retry_policy": {
+        "max_retry_count": 2,
+        "retry_prompt": "当前读取招标文件内容失败，请确认附件可访问后重新提交。"
+      },
+      "metadata": {},
+      "sub_sop_id": null,
+      "assignee_user_id": null,
+      "assignee_notify_channel": null
+    },
+    {
+      "node_id": "m13",
+      "type": "decision",
+      "name": "执行多维度文本合规校验",
+      "instruction": "对待检查文件文本执行全维度校验，覆盖上下文一致性检查、错漏内容排查、敏感信息识别、格式规范性校验、重复内容检测，将所有不符合要求的内容列为关注项，整理为逐条审核要素结论items。将本步骤作为目标而不是固定话术；如果用户当前消息、历史 slots 或路由意图已满足本步骤，直接写入对应 slot 并继续到下一缺失信息、工具调用或最终回复，不要重复确认。",
+      "optional": false,
+      "condition": "已获取全部合规检查标准依据，尚未完成文本校验",
+      "expected_user_info": [],
+      "allowed_actions": [
+        "continue_flow",
+        "handoff_human"
+      ],
+      "knowledge_scope": {},
+      "capability_refs": {
+        "general_skill_ids": [],
+        "tool_ids": [],
+        "knowledge_base_ids": [],
+        "required_general_skill_ids": [],
+        "required_tool_ids": [],
+        "required_knowledge_base_ids": []
+      },
+      "retry_policy": {
+        "max_retry_count": 1,
+        "retry_prompt": "当前文本校验遇到异常，正在重新执行校验流程。"
+      },
+      "metadata": {},
+      "sub_sop_id": null,
+      "assignee_user_id": null,
+      "assignee_notify_channel": null
+    },
+    {
+      "node_id": "m14",
+      "type": "decision",
+      "name": "校验保证金条款合规性",
+      "instruction": "基于提取到的保证金条款和项目上限价，依次完成三项校验：1.是否存在保证金约定；2.保证金金额是否超过项目上限价的2%；3.条款是否明确不接受保函/保险，汇总所有不符合要求的项作为：关注 。将本步骤作为目标而不是固定话术；如果用户当前消息、历史 slots 或路由意图已满足本步骤，直接写入对应 slot 并继续到下一缺失信息、工具调用或最终回复，不要重复确认。",
+      "optional": false,
+      "condition": "已成功提取投标保证金相关条款",
+      "expected_user_info": [],
+      "allowed_actions": [
+        "answer_user",
+        "handoff_human"
+      ],
+      "knowledge_scope": {},
+      "capability_refs": {
+        "general_skill_ids": [],
+        "tool_ids": [],
+        "knowledge_base_ids": [],
+        "required_general_skill_ids": [],
+        "required_tool_ids": [],
+        "required_knowledge_base_ids": []
+      },
+      "retry_policy": {
+        "max_retry_count": 0
+      },
+      "metadata": {
+        "flow_position": {
+          "x": 435,
+          "y": 1789
+        }
+      },
+      "sub_sop_id": null,
+      "assignee_user_id": null,
+      "assignee_notify_channel": null
+    },
+    {
+      "node_id": "m15",
+      "type": "tool_call",
+      "name": "提取商务及合同核心条款",
+      "instruction": "工具参数满足时直接调用工具，工具成功后基于工具结果进入商务合同条款合规校验环节，不要停留在等待状态。调用合同条款提取通用技能，从招标文件中拆解出履约保证金、付款节点、验收条件、违约条款等核心商务合同内容。将本步骤作为目标而不是固定话术；如果用户当前消息、历史 slots 或路由意图已满足本步骤，直接写入对应 slot 并继续到下一缺失信息、工具调用或最终回复，不要重复确认。工具参数满足时直接调用工具；工具成功后必须基于工具结果进入最终回复，不要停留在“请稍候”或“正在处理”。",
+      "optional": false,
+      "condition": "已完成投标保证金条款校验",
+      "expected_user_info": [],
+      "allowed_actions": [
+        "continue_flow"
+      ],
+      "knowledge_scope": {},
+      "capability_refs": {
+        "general_skill_ids": [
+          "genskill_c2979abc9c884975"
+        ],
+        "tool_ids": [],
+        "knowledge_base_ids": [],
+        "required_general_skill_ids": [
+          "genskill_c2979abc9c884975"
+        ],
+        "required_tool_ids": [],
+        "required_knowledge_base_ids": []
+      },
+      "retry_policy": {
+        "max_retry_count": 2,
+        "retry_prompt": "当前提取合同核心条款失败，请确认招标文件文本完整后重新尝试。"
+      },
+      "metadata": {},
+      "sub_sop_id": null,
+      "assignee_user_id": null,
+      "assignee_notify_channel": null
+    },
+    {
+      "node_id": "m16",
+      "type": "decision",
+      "name": "判定是否存在高风险条款",
+      "instruction": "结合提取到的核心商务条款、合同总金额以及知识库检索到的审查标准，逐一校验四类条款是否存在高风险：1.履约保证金比例超10%、不接受替代方式、退还约定不清；2.付款节点/比例/验收条件不合理、超长质保/回款周期；3.验收标准模糊、主体流程缺失、无关否决项；4.违约条款权责不对等、违约金上限不合理。根据校验结果判断是否存在高风险, 如有即标记为：关注。将本步骤作为目标而不是固定话术；如果用户当前消息、历史 slots 或路由意图已满足本步骤，直接写入对应 slot 并继续到下一缺失信息、工具调用或最终回复，不要重复确认。",
+      "optional": false,
+      "condition": "知识库检索结果返回完成",
+      "expected_user_info": [],
+      "allowed_actions": [
+        "answer_user",
+        "handoff_human"
+      ],
+      "knowledge_scope": {},
+      "capability_refs": {
+        "general_skill_ids": [],
+        "tool_ids": [],
+        "knowledge_base_ids": [],
+        "required_general_skill_ids": [],
+        "required_tool_ids": [],
+        "required_knowledge_base_ids": []
+      },
+      "retry_policy": {
+        "max_retry_count": 0
+      },
+      "metadata": {},
+      "sub_sop_id": null,
+      "assignee_user_id": null,
+      "assignee_notify_channel": null
+    },
+    {
+      "node_id": "m17",
+      "type": "decision",
+      "name": "合规风险点判定",
+      "instruction": "逐一判定三类风险点：1.异议/质疑受理主体、时限、答复要求是否符合招投标法规；2.是否限制供应商正常异议权利、澄清补遗是否明确实质性变更需重新公告顺延投标时间规则；3.中标候选人弃标后处理流程是否明确，整理出全部校验结论条目，如存存风险点等级列为：关注，否则为“通过”。 将本步骤作为目标而不是固定话术；如果用户当前消息、历史 slots 或路由意图已满足本步骤，直接写入对应 slot 并继续到下一缺失信息、工具调用或最终回复，不要重复确认。",
+      "optional": false,
+      "condition": "已完成条款提取和知识库检索，未完成风险点判定",
+      "expected_user_info": [],
+      "allowed_actions": [
+        "answer_user",
+        "handoff_human"
+      ],
+      "knowledge_scope": {},
+      "capability_refs": {
+        "general_skill_ids": [],
+        "tool_ids": [],
+        "knowledge_base_ids": [],
+        "required_general_skill_ids": [],
+        "required_tool_ids": [],
+        "required_knowledge_base_ids": []
+      },
+      "retry_policy": {
+        "max_retry_count": 0
+      },
+      "metadata": {},
+      "sub_sop_id": null,
+      "assignee_user_id": null,
+      "assignee_notify_channel": null
+    },
+    {
+      "allowed_actions": [
+        "answer_user"
+      ],
+      "condition": "skill_triggered",
+      "expected_user_info": [
+        "contract_type",
+        "contract_content"
+      ],
+      "instruction": "引导用户提供合同类型及合同文本或关键条款。用户一次提供多个信息时，需要同时提取并写入对应 slot，不要重复追问已提供的信息；当前节点已满足时直接进入下一缺失信息、工具调用、知识检索或最终回复。若用户已明确表达合同类型或内容，直接落槽并推进。将本步骤作为目标而不是固定话术；如果用户当前消息、历史 slots 或路由意图已满足本步骤，直接写入对应 slot 并继续到下一缺失信息、工具调用或最终回复，不要重复确认。",
+      "knowledge_scope": {},
+      "metadata": {
+        "step_order": 1
+      },
+      "name": "收集合同信息",
+      "node_id": "m18",
+      "optional": false,
+      "retry_policy": {
+        "fallback": "提示用户补充合同类型或文本，若连续失败则转人工",
+        "max_retries": 3
+      },
+      "type": "collect_info",
+      "sub_sop_id": null,
+      "capability_refs": {}
+    },
+    {
+      "allowed_actions": [
+        "answer_user"
+      ],
+      "condition": "contract_type_filled",
+      "expected_user_info": [],
+      "instruction": "根据已识别的合同类型，检索对应的审查标准清单与合规要求。若知识库无精确匹配，则基于通用合同审查原则进行条款核查。目标导向推进，无需用户额外输入。将本步骤作为目标而不是固定话术；如果用户当前消息、历史 slots 或路由意图已满足本步骤，直接写入对应 slot 并继续到下一缺失信息、工具调用或最终回复，不要重复确认。",
+      "knowledge_scope": {},
+      "metadata": {
+        "step_order": 2
+      },
+      "name": "检索审查标准",
+      "node_id": "m19",
+      "optional": false,
+      "retry_policy": {
+        "fallback": "使用通用审查标准继续流程",
+        "max_retries": 1
+      },
+      "type": "knowledge_query",
+      "sub_sop_id": null,
+      "capability_refs": {}
+    },
+    {
+      "allowed_actions": [
+        "call_tool:contract.archive_query",
+        "continue_flow"
+      ],
+      "condition": "contract_content_filled",
+      "expected_user_info": [],
+      "instruction": "基于合同类型与关键条款内容，调用合同判例检索工具获取历史相似案例与裁判依据。工具参数满足时直接调用工具，工具成功后基于工具结果进入最终回复，不要停留在等待状态。提取判例摘要、相关度及引用案号。将本步骤作为目标而不是固定话术；如果用户当前消息、历史 slots 或路由意图已满足本步骤，直接写入对应 slot 并继续到下一缺失信息、工具调用或最终回复，不要重复确认。",
+      "knowledge_scope": {},
+      "metadata": {
+        "step_order": 3,
+        "tool_params_mapping": {
+          "doc_type": "all",
+          "query": "contract_content",
+          "top_k": 5
+        }
+      },
+      "name": "检索历史判例",
+      "node_id": "m20",
+      "optional": false,
+      "retry_policy": {
+        "fallback": "标记为无先例，继续风险评估",
+        "max_retries": 2
+      },
+      "type": "tool_call",
+      "sub_sop_id": null,
+      "capability_refs": {}
+    },
+    {
+      "allowed_actions": [
+        "answer_user"
+      ],
+      "condition": "tool_call_completed",
+      "expected_user_info": [],
+      "instruction": "综合审查标准核查结果与历史判例，评估条款风险等级。若存在高风险条款或检索无相关先例，判定为需升级；否则判定为可自动输出审查报告。根据判定结果路由至对应分支。将本步骤作为目标而不是固定话术；如果用户当前消息、历史 slots 或路由意图已满足本步骤，直接写入对应 slot 并继续到下一缺失信息、工具调用或最终回复，不要重复确认。",
+      "knowledge_scope": {},
+      "metadata": {
+        "decision_logic": "high_risk_or_no_precedent -> handoff; else -> output_report",
+        "step_order": 4
+      },
+      "name": "评估风险等级",
+      "node_id": "m21",
+      "optional": false,
+      "retry_policy": {
+        "fallback": "默认输出审查报告",
+        "max_retries": 0
+      },
+      "type": "decision",
+      "sub_sop_id": null,
+      "capability_refs": {}
+    },
+    {
+      "allowed_actions": [
+        "answer_user"
+      ],
+      "condition": "risk_level_low_or_medium",
+      "expected_user_info": [],
+      "instruction": "汇总风险点、修改建议及历史判例依据，向用户输出结构化审查报告。确保结论明确，不承诺后续人工跟进。若工具或知识库返回结果不完整，基于已有信息给出最佳建议并说明局限性。将本步骤作为目标而不是固定话术；如果用户当前消息、历史 slots 或路由意图已满足本步骤，直接写入对应 slot 并继续到下一缺失信息、工具调用或最终回复，不要重复确认。",
+      "knowledge_scope": {},
+      "metadata": {
+        "is_terminal": true,
+        "step_order": 5
+      },
+      "name": "输出审查报告",
+      "node_id": "m22",
+      "optional": false,
+      "retry_policy": {
+        "fallback": "直接输出当前可用结论",
+        "max_retries": 0
+      },
+      "type": "response",
+      "sub_sop_id": null,
+      "capability_refs": {}
+    },
+    {
+      "allowed_actions": [
+        "answer_user"
+      ],
+      "condition": null,
+      "expected_user_info": [
+        "clause_content",
+        "modification_request"
+      ],
+      "instruction": "目标导向：引导用户提供待修改的合同条款原文或编号，以及具体的修改诉求或业务背景。支持单轮多字段抽取，若用户已提供则直接落槽并推进至下一步；当前节点已满足时直接进入下一缺失信息或工具调用。将本步骤作为目标而不是固定话术；如果用户当前消息、历史 slots 或路由意图已满足本步骤，直接写入对应 slot 并继续到下一缺失信息、工具调用或最终回复，不要重复确认。",
+      "knowledge_scope": {},
+      "metadata": {},
+      "name": "收集修改诉求",
+      "node_id": "m23",
+      "optional": false,
+      "retry_policy": {
+        "max_retries": 3,
+        "strategy": "clarify_missing"
+      },
+      "type": "collect_info",
+      "sub_sop_id": null,
+      "capability_refs": {}
+    },
+    {
+      "allowed_actions": [
+        "call_tool:contract.archive_query",
+        "answer_user",
+        "continue_flow"
+      ],
+      "condition": "clause_content与modification_request均已收集",
+      "expected_user_info": [],
+      "instruction": "目标导向：基于已收集的条款内容和修改诉求，调用合同判例检索工具获取相关合规要求、历史合同表述或司法判例作为参考依据。工具参数满足时直接调用工具，将条款内容与修改诉求拼接为检索词传入query参数；工具成功后基于工具结果进入最终回复，不要停留在等待状态。若工具调用失败或无结果，直接基于内置法律知识库生成建议，不中断流程。将本步骤作为目标而不是固定话术；如果用户当前消息、历史 slots 或路由意图已满足本步骤，直接写入对应 slot 并继续到下一缺失信息、工具调用或最终回复，不要重复确认。",
+      "knowledge_scope": {},
+      "metadata": {},
+      "name": "检索合规与判例参考",
+      "node_id": "m24",
+      "optional": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "strategy": "fallback_to_llm"
+      },
+      "type": "tool_call",
+      "sub_sop_id": null,
+      "capability_refs": {}
+    },
+    {
+      "allowed_actions": [
+        "answer_user"
+      ],
+      "condition": null,
+      "expected_user_info": [],
+      "instruction": "目标导向：综合用户诉求、检索到的合规参考或判例，生成修改后的条款表述及详细的合规/业务理由。明确告知用户建议内容，并提示如需正式签署需经法务复核。若工具失败或信息不足，直接基于现有信息给出最佳建议并说明限制。将本步骤作为目标而不是固定话术；如果用户当前消息、历史 slots 或路由意图已满足本步骤，直接写入对应 slot 并继续到下一缺失信息、工具调用或最终回复，不要重复确认。",
+      "knowledge_scope": {},
+      "metadata": {},
+      "name": "输出修改建议与理由",
+      "node_id": "m25",
+      "optional": false,
+      "retry_policy": {
+        "max_retries": 0,
+        "strategy": "terminate"
+      },
+      "type": "response",
+      "sub_sop_id": null,
+      "capability_refs": {}
+    },
+    {
+      "node_id": "m26",
+      "type": "collect_info",
+      "name": "文件齐备性校验",
+      "instruction": "只读取 task_requirement.attachments 中每个附件的 filename、kind、content_type、size，不要读取文件内容。必需文件清单=[营业执照.jpg, 合同.pdf, 发票.xlsx]。判断：①全部存在→sufficiency_result='sufficient'，下一步走 n2_license；②缺失→sufficiency_result='insufficient'、missing_files=[缺失文件名清单]，下一步走 n5_request_more，并在 reply_fragment 中明确告诉用户还缺哪些文件、格式要求。【强制】无论哪种结论，结束本步骤前必须且只能调用一次 mcp__staffdeck__submit_step_result 提交结构化结果，绝不要只靠文字说明结束本步骤。提交参数示例：status='completed'，reply_fragment='给用户的话'，slot_updates={'sufficiency_result':'sufficient'|'insufficient','missing_files':[...]}，next_step_id='n2_license'（齐备）或 'n5_request_more'（不齐备，必须与上述判断一致）。",
+      "optional": false,
+      "condition": null,
+      "expected_user_info": [],
+      "allowed_actions": [
+        "ask_user",
+        "continue_flow",
+        "handoff_human"
+      ],
+      "knowledge_scope": {},
+      "capability_refs": {
+        "general_skill_ids": [],
+        "tool_ids": [],
+        "knowledge_base_ids": [],
+        "required_general_skill_ids": [],
+        "required_tool_ids": [],
+        "required_knowledge_base_ids": []
+      },
+      "retry_policy": {},
+      "metadata": {},
+      "sub_sop_id": null,
+      "assignee_user_id": null,
+      "assignee_notify_channel": null
+    },
+    {
+      "node_id": "m27",
+      "type": "collect_info",
+      "name": "营业执照内容核对",
+      "instruction": "从 task_requirement.attachments 找到文件名含 '营业执照' 的附件，用其 workspace_path（沙箱路径 attachments/<hash>-<name>）读取；图片走视觉输入，PDF 用 extract_document_text。按规则核对：<在此填写营业执照校验规则，如统一社会信用代码格式、有效期、名称一致性>。将结论写入 slot check_results.license={pass:bool, detail:str}。【强制】本步骤结束前必须且只能调用一次 mcp__staffdeck__submit_step_result 提交：status='completed'，slot_updates={'check_results':{'license':{'pass':bool,'detail':str}}}，next_step_id='n3_contract'。不要只靠文字结束本步骤。",
+      "optional": false,
+      "condition": null,
+      "expected_user_info": [],
+      "allowed_actions": [
+        "call_tool:read_file",
+        "call_tool:extract_document_text",
+        "call_tool:exec_command",
+        "ask_user",
+        "continue_flow"
+      ],
+      "knowledge_scope": {},
+      "capability_refs": {
+        "general_skill_ids": [],
+        "tool_ids": [],
+        "knowledge_base_ids": [],
+        "required_general_skill_ids": [],
+        "required_tool_ids": [],
+        "required_knowledge_base_ids": []
+      },
+      "retry_policy": {
+        "max_retries": 2,
+        "strategy": "ask_missing"
+      },
+      "metadata": {},
+      "sub_sop_id": null,
+      "assignee_user_id": null,
+      "assignee_notify_channel": null
+    },
+    {
+      "node_id": "m28",
+      "type": "collect_info",
+      "name": "合同关键条款检查",
+      "instruction": "从 attachments 找到 '合同' 附件，读取内容（PDF 用 extract_document_text）。按规则检查：<填写合同校验规则，如双方主体、金额、签署日期、关键条款>。结论写入 check_results.contract={pass,detail}。【强制】本步骤结束前必须且只能调用一次 mcp__staffdeck__submit_step_result 提交：status='completed'，slot_updates={'check_results':{'contract':{'pass':bool,'detail':str}}}，next_step_id='n4_invoice'。不要只靠文字结束本步骤。",
+      "optional": false,
+      "condition": null,
+      "expected_user_info": [],
+      "allowed_actions": [
+        "call_tool:read_file",
+        "call_tool:extract_document_text",
+        "call_tool:exec_command",
+        "ask_user",
+        "continue_flow"
+      ],
+      "knowledge_scope": {},
+      "capability_refs": {
+        "general_skill_ids": [],
+        "tool_ids": [],
+        "knowledge_base_ids": [],
+        "required_general_skill_ids": [],
+        "required_tool_ids": [],
+        "required_knowledge_base_ids": []
+      },
+      "retry_policy": {
+        "max_retries": 2,
+        "strategy": "ask_missing"
+      },
+      "metadata": {},
+      "sub_sop_id": null,
+      "assignee_user_id": null,
+      "assignee_notify_channel": null
+    },
+    {
+      "node_id": "m29",
+      "type": "collect_info",
+      "name": "发票金额一致性检查",
+      "instruction": "从 attachments 找到 '发票' 附件（xlsx/csv 用 read_file 或 exec_command 解析）。按规则检查：<填写发票校验规则，如金额与合同一致、税号、开票日期>。结论写入 check_results.invoice={pass,detail}。【强制】本步骤结束前必须且只能调用一次 mcp__staffdeck__submit_step_result 提交：status='completed'，slot_updates={'check_results':{'invoice':{'pass':bool,'detail':str}}}，next_step_id='n6_report'。不要只靠文字结束本步骤。",
+      "optional": false,
+      "condition": null,
+      "expected_user_info": [],
+      "allowed_actions": [
+        "call_tool:read_file",
+        "call_tool:extract_document_text",
+        "call_tool:exec_command",
+        "ask_user",
+        "continue_flow"
+      ],
+      "knowledge_scope": {},
+      "capability_refs": {
+        "general_skill_ids": [],
+        "tool_ids": [],
+        "knowledge_base_ids": [],
+        "required_general_skill_ids": [],
+        "required_tool_ids": [],
+        "required_knowledge_base_ids": []
+      },
+      "retry_policy": {
+        "max_retries": 2,
+        "strategy": "ask_missing"
+      },
+      "metadata": {},
+      "sub_sop_id": null,
+      "assignee_user_id": null,
+      "assignee_notify_channel": null
+    },
+    {
+      "node_id": "m30",
+      "type": "response",
+      "name": "请用户补传缺失文件",
+      "instruction": "基于 slot missing_files，明确告诉用户还缺哪些文件、格式要求，请其补充上传后重新发起校验。不要尝试内容检查。【强制】本步骤结束前必须且只能调用一次 mcp__staffdeck__submit_step_result 提交：status='completed'，reply_fragment='给用户的话'，next_step_id 留空（本步骤为终点）。",
+      "optional": false,
+      "condition": null,
+      "expected_user_info": [],
+      "allowed_actions": [
+        "answer_user",
+        "handoff_human"
+      ],
+      "knowledge_scope": {},
+      "capability_refs": {
+        "general_skill_ids": [],
+        "tool_ids": [],
+        "knowledge_base_ids": [],
+        "required_general_skill_ids": [],
+        "required_tool_ids": [],
+        "required_knowledge_base_ids": []
+      },
+      "retry_policy": {},
+      "metadata": {},
+      "sub_sop_id": null,
+      "assignee_user_id": null,
+      "assignee_notify_channel": null
+    },
+    {
+      "node_id": "m31",
+      "type": "response",
+      "name": "汇总校验结论",
+      "instruction": "读取 slot check_results（license/contract/invoice 等），输出一份结构化结论：每项 通过/不通过+原因；总体结论；若有不通过项给出整改建议。【强制】本步骤结束前必须且只能调用一次 mcp__staffdeck__submit_step_result 提交：status='completed'，reply_fragment='结构化结论正文'，next_step_id 留空（本步骤为终点）。",
+      "optional": false,
+      "condition": null,
+      "expected_user_info": [],
+      "allowed_actions": [
+        "answer_user"
+      ],
+      "knowledge_scope": {},
+      "capability_refs": {
+        "general_skill_ids": [],
+        "tool_ids": [],
+        "knowledge_base_ids": [],
+        "required_general_skill_ids": [],
+        "required_tool_ids": [],
+        "required_knowledge_base_ids": []
+      },
+      "retry_policy": {},
+      "metadata": {},
+      "sub_sop_id": null,
+      "assignee_user_id": null,
+      "assignee_notify_channel": null
+    },
+    {
+      "node_id": "m_reject",
+      "type": "response",
+      "name": "输出采购文件合规审查否决结论",
+      "instruction": "汇总所有已识别的否决类风险项，明确告知用户本次采购文件审查未通过，列出具体否决原因，给出整改建议。将本步骤作为目标而不是固定话术；如果用户当前消息、历史 slots 或路由意图已满足本步骤，直接写入对应 slot 并继续到下一缺失信息、工具调用或最终回复，不要重复确认。",
+      "optional": false,
+      "condition": "任意审查环节触发否决判定",
+      "expected_user_info": [],
+      "allowed_actions": [
+        "answer_user"
+      ],
+      "knowledge_scope": {},
+      "capability_refs": {
+        "general_skill_ids": [],
+        "tool_ids": [],
+        "knowledge_base_ids": [],
+        "required_general_skill_ids": [],
+        "required_tool_ids": [],
+        "required_knowledge_base_ids": []
+      },
+      "retry_policy": {
+        "max_retry_count": 0
+      },
+      "metadata": {},
+      "sub_sop_id": null,
+      "assignee_user_id": null,
+      "assignee_notify_channel": null
+    },
+    {
+      "node_id": "m_handoff",
+      "type": "handoff",
+      "name": "转人工处理",
+      "instruction": "当工具调用连续失败、资料存在无法自动识别的异常、用户明确要求人工介入时，转接给采购合规审查专员处理，同步已收集的全部项目资料和已完成的审查进度。将本步骤作为目标而不是固定话术；如果用户当前消息、历史 slots 或路由意图已满足本步骤，直接写入对应 slot 并继续到下一缺失信息、工具调用或最终回复，不要重复确认。给用户明确最终回复；无法闭环时转人工，不要只说请稍候。",
+      "optional": true,
+      "condition": "触发人工转接条件",
+      "expected_user_info": [],
+      "allowed_actions": [
+        "answer_user",
+        "handoff_human"
+      ],
+      "knowledge_scope": {},
+      "capability_refs": {
+        "general_skill_ids": [],
+        "tool_ids": [],
+        "knowledge_base_ids": [],
+        "required_general_skill_ids": [],
+        "required_tool_ids": [],
+        "required_knowledge_base_ids": []
+      },
+      "retry_policy": {
+        "max_retry_count": 0
+      },
+      "metadata": {},
+      "sub_sop_id": null,
+      "assignee_user_id": null,
+      "assignee_notify_channel": null
+    },
+    {
+      "node_id": "m32",
+      "type": "collect_info",
+      "name": "汇总协审要点与综合结论",
+      "instruction": "汇总前置各阶段（合作方尽调、采购文件合规各分项、合同审查、签约材料校验）产生的全部评审要点与结论，关联 rule_id 与证据附件信息，统计通过/关注/否决/转人工数量，推导综合审批结论（结论、条件、摘要）。直接复用已收集的 slots 信息写入对应 slot，无需向用户追问。若关键材料缺失或字段无法核验，标记需转人工。",
+      "optional": false,
+      "expected_user_info": [],
+      "allowed_actions": [
+        "continue_flow",
+        "handoff_human"
+      ],
+      "knowledge_scope": {},
+      "capability_refs": {
+        "tool_ids": [],
+        "general_skill_ids": [],
+        "knowledge_base_ids": []
+      },
+      "retry_policy": {},
+      "metadata": {},
+      "sub_sop_id": null
+    },
+    {
+      "node_id": "m33",
+      "type": "collect_info",
+      "name": "确认协审内容",
+      "instruction": "接收前置SOP已完成的用户确认结果review_confirm_result，直接写入对应slot，无需向用户发起确认询问。将本步骤作为目标而不是固定话术；如果前置SOP传入消息、历史 slots 或路由意图已满足本步骤，直接写入对应 slot 并继续到下一节点，不要重复确认。",
+      "optional": false,
+      "condition": "已从TaskFrame中获取到review_confirm_result确认结果",
+      "expected_user_info": [
+        "review_confirm_result"
+      ],
+      "allowed_actions": [],
+      "knowledge_scope": {},
+      "capability_refs": {
+        "general_skill_ids": [],
+        "tool_ids": [],
+        "knowledge_base_ids": [],
+        "required_general_skill_ids": [],
+        "required_tool_ids": [],
+        "required_knowledge_base_ids": []
+      },
+      "retry_policy": {
+        "max_retry_count": 0
+      },
+      "metadata": {},
+      "sub_sop_id": null,
+      "assignee_user_id": null,
+      "assignee_notify_channel": null
+    },
+    {
+      "node_id": "m34",
+      "type": "response",
+      "name": "生成HTML协审意见卡片",
+      "instruction": "按照给定的HTML模板，将确认后的结构化协审数据渲染为符合样式规范的HTML协审意见卡片，同时附带结构化JSON数据和OA可读文本，返回给调用方。将本步骤作为目标而不是固定话术；如果前置SOP传入消息、历史 slots 或路由意图已满足本步骤，直接写入对应 slot 并继续到下一缺失信息、工具调用或最终回复，不要重复确认。",
+      "optional": false,
+      "condition": "用户已确认协审内容准确无误",
+      "expected_user_info": [],
+      "allowed_actions": [
+        "answer_user:返回完整的AI协审意见卡片结果"
+      ],
+      "knowledge_scope": {},
+      "capability_refs": {
+        "general_skill_ids": [],
+        "tool_ids": [],
+        "knowledge_base_ids": [],
+        "required_general_skill_ids": [],
+        "required_tool_ids": [],
+        "required_knowledge_base_ids": []
+      },
+      "retry_policy": {
+        "max_retry_count": 2,
+        "retry_prompt": "重新按照模板规范渲染HTML协审意见卡片，确保样式和内容符合要求。"
+      },
+      "metadata": {},
+      "sub_sop_id": null,
+      "assignee_user_id": null,
+      "assignee_notify_channel": null
+    },
+    {
+      "node_id": "m35",
+      "type": "response",
+      "name": "反馈最终合规结论",
+      "instruction": "汇总全链路合规校验结论（合作方尽调、采购文件各分项审查、合同审查、签约材料校验），输出结构化最终报告：总体结论、各分项通过/关注/否决状态与整改建议、可下载的协审/合规报告链接。无法闭环时转人工，不要只说请稍候。",
+      "optional": false,
+      "expected_user_info": [],
+      "allowed_actions": [
+        "answer_user",
+        "handoff_human"
+      ],
+      "knowledge_scope": {},
+      "capability_refs": {
+        "tool_ids": [],
+        "general_skill_ids": [],
+        "knowledge_base_ids": []
+      },
+      "retry_policy": {},
+      "metadata": {},
+      "sub_sop_id": null
+    }
+  ],
+  "edges": [
+    {
+      "source_node_id": "m01",
+      "next_node_id": "m02",
+      "condition": "slots_filled(company_name, unified_social_credit_code)",
+      "priority": 1,
+      "label": "信息完整"
+    },
+    {
+      "source_node_id": "m02",
+      "next_node_id": "m03",
+      "condition": "tool_success",
+      "priority": 1,
+      "label": "查询成功"
+    },
+    {
+      "source_node_id": "m02",
+      "next_node_id": "m_handoff",
+      "condition": "tool_fail",
+      "priority": 1,
+      "label": "查询失败转人工"
+    },
+    {
+      "source_node_id": "m03",
+      "next_node_id": "m04",
+      "condition": "compliance_result == pass",
+      "priority": 1,
+      "label": "尽调通过"
+    },
+    {
+      "source_node_id": "m03",
+      "next_node_id": "m_handoff",
+      "condition": "compliance_result == risk",
+      "priority": 1,
+      "label": "存在风险升级法务"
+    },
+    {
+      "source_node_id": "m04",
+      "next_node_id": "m05",
+      "condition": "default",
+      "priority": 1,
+      "label": "进入采购资料审查"
+    },
+    {
+      "source_node_id": "m05",
+      "next_node_id": "m06",
+      "condition": "default",
+      "priority": 1,
+      "label": "进入附件点验"
+    },
+    {
+      "source_node_id": "m06",
+      "next_node_id": "m07",
+      "condition": "否决",
+      "priority": 1,
+      "label": "采购方案或招标文件缺失"
+    },
+    {
+      "source_node_id": "m06",
+      "next_node_id": "m08",
+      "condition": "关注",
+      "priority": 1,
+      "label": "仅决策纪要缺失"
+    },
+    {
+      "source_node_id": "m06",
+      "next_node_id": "m09",
+      "condition": "通过",
+      "priority": 1,
+      "label": "附件齐全"
+    },
+    {
+      "source_node_id": "m08",
+      "next_node_id": "m09",
+      "condition": "default",
+      "priority": 1,
+      "label": "提示后继续"
+    },
+    {
+      "source_node_id": "m09",
+      "next_node_id": "m_reject",
+      "condition": "否决",
+      "priority": 1,
+      "label": "采购方式不一致或超预算"
+    },
+    {
+      "source_node_id": "m09",
+      "next_node_id": "m10",
+      "condition": "通过",
+      "priority": 1,
+      "label": "方式合规"
+    },
+    {
+      "source_node_id": "m10",
+      "next_node_id": "m_reject",
+      "condition": "否决",
+      "priority": 1,
+      "label": "资格条件违规"
+    },
+    {
+      "source_node_id": "m10",
+      "next_node_id": "m11",
+      "condition": "通过",
+      "priority": 1,
+      "label": "资格合规"
+    },
+    {
+      "source_node_id": "m11",
+      "next_node_id": "m_reject",
+      "condition": "否决",
+      "priority": 1,
+      "label": "评分细则违规"
+    },
+    {
+      "source_node_id": "m11",
+      "next_node_id": "m12",
+      "condition": "通过",
+      "priority": 1,
+      "label": "评分合规"
+    },
+    {
+      "source_node_id": "m12",
+      "next_node_id": "m13",
+      "condition": "default",
+      "priority": 1,
+      "label": "文本读取成功"
+    },
+    {
+      "source_node_id": "m12",
+      "next_node_id": "m_handoff",
+      "condition": "tool_fail",
+      "priority": 1,
+      "label": "读取失败转人工"
+    },
+    {
+      "source_node_id": "m13",
+      "next_node_id": "m14",
+      "condition": "default",
+      "priority": 1,
+      "label": "文本校验完成"
+    },
+    {
+      "source_node_id": "m14",
+      "next_node_id": "m15",
+      "condition": "default",
+      "priority": 1,
+      "label": "保证金校验完成"
+    },
+    {
+      "source_node_id": "m15",
+      "next_node_id": "m16",
+      "condition": "default",
+      "priority": 1,
+      "label": "条款提取成功"
+    },
+    {
+      "source_node_id": "m15",
+      "next_node_id": "m_handoff",
+      "condition": "tool_fail",
+      "priority": 1,
+      "label": "提取失败转人工"
+    },
+    {
+      "source_node_id": "m16",
+      "next_node_id": "m17",
+      "condition": "default",
+      "priority": 1,
+      "label": "合同核心条款校验完成"
+    },
+    {
+      "source_node_id": "m17",
+      "next_node_id": "m18",
+      "condition": "default",
+      "priority": 1,
+      "label": "异议澄清弃标校验完成"
+    },
+    {
+      "source_node_id": "m18",
+      "next_node_id": "m19",
+      "condition": "contract_type_filled",
+      "priority": 1,
+      "label": "合同类型已识别"
+    },
+    {
+      "source_node_id": "m19",
+      "next_node_id": "m20",
+      "condition": "standards_loaded",
+      "priority": 1,
+      "label": "标准已检索"
+    },
+    {
+      "source_node_id": "m20",
+      "next_node_id": "m21",
+      "condition": "tool_call_completed",
+      "priority": 1,
+      "label": "判例已检索"
+    },
+    {
+      "source_node_id": "m21",
+      "next_node_id": "m22",
+      "condition": "risk_level_low_or_medium",
+      "priority": 1,
+      "label": "低风险可自动输出"
+    },
+    {
+      "source_node_id": "m21",
+      "next_node_id": "m_handoff",
+      "condition": "risk_level_high_or_no_precedent",
+      "priority": 1,
+      "label": "高风险升级法务"
+    },
+    {
+      "source_node_id": "m22",
+      "next_node_id": "m23",
+      "condition": "default",
+      "priority": 1,
+      "label": "进入条款修改建议"
+    },
+    {
+      "source_node_id": "m23",
+      "next_node_id": "m24",
+      "condition": "clause_content与modification_request均已收集",
+      "priority": 1,
+      "label": "信息完整"
+    },
+    {
+      "source_node_id": "m23",
+      "next_node_id": "m25",
+      "condition": "信息完整但用户明确要求跳过检索",
+      "priority": 1,
+      "label": "跳过检索"
+    },
+    {
+      "source_node_id": "m24",
+      "next_node_id": "m25",
+      "condition": "工具调用成功或触发降级策略",
+      "priority": 1,
+      "label": "参考已获取"
+    },
+    {
+      "source_node_id": "m25",
+      "next_node_id": "m26",
+      "condition": "default",
+      "priority": 1,
+      "label": "进入签约材料齐备性校验"
+    },
+    {
+      "source_node_id": "m26",
+      "next_node_id": "m27",
+      "condition": "sufficiency_result == sufficient",
+      "priority": 1,
+      "label": "材料齐备"
+    },
+    {
+      "source_node_id": "m26",
+      "next_node_id": "m30",
+      "condition": "sufficiency_result == insufficient",
+      "priority": 1,
+      "label": "材料缺失"
+    },
+    {
+      "source_node_id": "m27",
+      "next_node_id": "m28",
+      "condition": "default",
+      "priority": 1,
+      "label": "营业执照核对完成"
+    },
+    {
+      "source_node_id": "m28",
+      "next_node_id": "m29",
+      "condition": "default",
+      "priority": 1,
+      "label": "合同核对完成"
+    },
+    {
+      "source_node_id": "m29",
+      "next_node_id": "m31",
+      "condition": "default",
+      "priority": 1,
+      "label": "发票核对完成"
+    },
+    {
+      "source_node_id": "m31",
+      "next_node_id": "m32",
+      "condition": "default",
+      "priority": 1,
+      "label": "进入协审结论汇总"
+    },
+    {
+      "source_node_id": "m32",
+      "next_node_id": "m33",
+      "condition": "default",
+      "priority": 1,
+      "label": "要点已聚合"
+    },
+    {
+      "source_node_id": "m33",
+      "next_node_id": "m34",
+      "condition": "default",
+      "priority": 1,
+      "label": "确认完成"
+    },
+    {
+      "source_node_id": "m34",
+      "next_node_id": "m35",
+      "condition": "default",
+      "priority": 1,
+      "label": "报告已生成"
+    }
+  ]
+}

@@ -177,7 +177,7 @@ def resolve_slots(
         if (visible_resources is not None and rtype in {"tool", "general_skill", "knowledge_base", "mcp_server"}
                 and resource_id not in visible_resources.get(rtype, set())):
             if decl.required:
-                raise SlotNotBound(f"slot {decl.name!r} is bound to {rtype} {resource_id!r} which this staff cannot use", details={"slot": decl.name, "resource": resource_id})
+                raise SlotNotBound(f"slot {decl.name!r} is bound to {rtype} {resource_id!r} which this staff cannot use", details={"slot": decl.name, "resource": resource_id, "resource_type": rtype, "node_id": decl.node_id})
             continue
         resolved.append(
             ResolvedSlot(
