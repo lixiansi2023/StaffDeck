@@ -75,6 +75,16 @@ n11 render_audit_report ──> report_url ──> reply_fragment
 - **幂等**：脚本用 `update_skill` 处理已存在的 `skill_id`，可重复运行。
 - **实跑结果**：SOP 已发布（`agent_skill_branches` 中该 agent 分支 `status=active`，内容为 12 节点/11 边、`n0_collect`→`n11_report`），`harness_max_actions=64`，两工具绑定 active。脚本已加「内容一致则跳过 update」保护，避免重跑无谓升版本。
 
+### D6：禁止把附件正文写入槽位（路径引用模式）
+
+实跑 `SOP_RESULT_REPAIR_EXHAUSTED` 停在 n0 的根因：n0 原要求把 5 份附件全文写进 `source_docs` 槽位，模型在 `submit_step_result` 参数里塞约 11K 字符的巨型 JSON，拼接出错（`Extra data: line 1 column 10998`）。`validate_result`（`structured_output.py:94`）解析失败后误报 `'status' is a required property`（实际参数里有 status），触发结果专门修正，同样因超长载荷 2 次耗尽而失败；且 submit 从未成功，`slots_json={}`，「继续」重启仍从 n0 开始形成死循环。此前单 turn 上下文溢出（message 累积到 50、token 超限）也是同一根源。
+
+决策（D6）：
+- n0 只读正文做角色判定，读完即弃；`attachment_role_map` 存「文件名→角色→路径」，`source_docs` 只存角色到 `workspace_path` 的**路径字符串**，绝不存正文。
+- n2–n8 从 `source_docs` 取路径，用 `read_file` 按需读取对应文件再判定（这些节点的 `allowed_actions` 已加 `call_tool:read_file`）。
+- `response_rules` 新增全局约束「禁止把文件正文写入任何槽位或 submit_step_result 参数」。
+- 已在招采数字员工（分支 v1.7.0）与小明（v1.0.0）两侧重新发布并校验：n0 路径引用/禁写正文、n2 read_file 均生效。
+
 ## 风险与验收
 
 - 风险：规则知识库未建则 D1 不生效（当前节点 instruction 已内联口径，可先跑通）；两个 MCP server 同名工具需在 `tool_ids` 上精确区分，不能只填名字。

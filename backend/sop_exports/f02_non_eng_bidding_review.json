@@ -16,7 +16,7 @@
     "对非工程招标呈批表做合规点检并出报告"
   ],
   "goal": [
-    "识别并一次性读取全部附件（按内容归入 A00–A04 逻辑角色），逐项点检 8 个审核要素",
+    "识别全部附件并按内容归入 A00–A04 逻辑角色，路径入槽、按需读取，逐项点检 8 个审核要素",
     "每条结论给出 element_tag / opinion / level / rule_id / evidence",
     "落库 save_audit_result 并生成 report_url 写进 reply_fragment"
   ],
@@ -29,7 +29,7 @@
     "extract_scope": "all_skill_expected_user_info",
     "multi_slot_per_turn": true,
     "skip_satisfied_steps": true,
-    "description": "attachment_role_map 记录文件名到 A00–A04 逻辑角色的映射；source_docs 按角色承载一次性读取的附件正文；review_items 逐条累积 8 项结论；audit_payload 承载落库 JSON。",
+    "description": "attachment_role_map 记录文件名到 A00–A04 逻辑角色的映射；source_docs 只存角色到 workspace_path 的路径字符串（绝不存正文），各检查节点按需 read_file；review_items 逐条累积 8 项结论；audit_payload 承载落库 JSON。",
     "target_info": [
       "attachment_role_map",
       "source_docs",
@@ -42,7 +42,8 @@
   "response_rules": [
     "level 只能是 风险 / 关注 / 通过；否决一律记风险",
     "summary 的 X/Y/Z 必须与 items 实际级别统计一致",
-    "report_url 必须原样来自 render_audit_report，不得编造"
+    "report_url 必须原样来自 render_audit_report，不得编造",
+    "禁止把文件正文写入任何槽位或 submit_step_result 参数，槽位只存路径与结论"
   ],
   "interruption_policy": {
     "allow_interrupt": "true",
@@ -58,7 +59,7 @@
       "node_id": "n0_collect",
       "type": "collect_info",
       "name": "识别并读取全套材料",
-      "instruction": "附件的文件名不固定，必须按内容识别角色，不得按文件名假设。步骤：1) 从 task_requirement.attachments 拿到每个附件的 filename 与 workspace_path（/workspace/ 前缀可直接使用）；同时用 mcp__staffdeck__sandbox_execute 的 list_directory（path='/workspace', recursive=true）列出沙箱内全部文件，两者对照，以实际存在的文件为准。2) 逐个用 read_file 读取正文（只读，不判断合规）。3) 按内容特征把每份材料判为逻辑角色 A00–A04：A00=OA呈批表（内容是表单/JSON，有 form_fields 与 attachments 清单）；A01=采购方案（有项目概况/采购需求清单/采购方式建议）；A02=决策纪要（会议纪要体，有参会人员/决议事项/表决意见并载明采购方式）；A03=招标文件全文（有招标公告/投标人须知/资格条件/评分细则/合同条款等章）；A04=合同模板（合同体，有甲乙方/付款/验收/履约保证金/违约条款，常为 A03 的附件）。文件名只作辅助线索，内容与文件名冲突时以内容为准；一份附件只归一个主角色，若内附其他角色内容（如招标文件附合同模板）在映射备注中说明。4) 把『文件名 → 角色』写入槽位 attachment_role_map（含 filename、workspace_path、role、remark），把各角色正文写入槽位 source_docs（键为角色如 source_docs.A03，值为该正文）。5) 从 A00 提取 request_id、form_code=F02、project_name、rule_lib_version 写入 audit_meta。本步骤必须一次读全并识别完，后续节点只从 source_docs 按角色取用，不得重复读文件；不得用固定文件名 A00-xxx 去猜路径。结束前必须且只能调用一次 mcp__staffdeck__submit_step_result。参数必须同时含两个必填字段 status 与 reply_fragment：status='completed'，reply_fragment=本步骤给用户的一句话简短进度说明。并带 slot_updates={'attachment_role_map':[...],'source_docs':{...},'audit_meta':{...}}；next_step_id='n1_attachment'。",
+      "instruction": "附件的文件名不固定，必须按内容识别角色，不得按文件名假设。步骤：1) 从 task_requirement.attachments 拿到每个附件的 filename 与 workspace_path（/workspace/ 前缀可直接使用）；同时用 mcp__staffdeck__sandbox_execute 的 list_directory（path='/workspace', recursive=true）列出沙箱内全部文件，两者对照，以实际存在的文件为准。2) 逐个用 read_file 读取正文，仅用于判定角色，读完即弃，不要把正文写进任何槽位。3) 按内容特征把每份材料判为逻辑角色 A00–A04：A00=OA呈批表（表单/JSON，有 form_fields 与 attachments 清单）；A01=采购方案（项目概况/采购需求清单/采购方式建议）；A02=决策纪要（会议纪要体，有参会人员/决议事项/表决意见并载明采购方式）；A03=招标文件全文（招标公告/投标人须知/资格条件/评分细则/合同条款等章）；A04=合同模板（合同体，有甲乙方/付款/验收/履约保证金/违约条款，常为 A03 的附件）。文件名只作辅助线索，内容与文件名冲突时以内容为准；一份附件只归一个主角色，若内附其他角色内容（如招标文件附合同模板）在备注中说明。4) 把『文件名 → 角色 → 路径』写入槽位 attachment_role_map（每项含 filename、workspace_path、role、remark）；把角色到路径的映射写入槽位 source_docs，格式 source_docs={'A00':'/workspace/...','A01':'/workspace/...',...}，值必须是路径字符串，绝对禁止把文件正文写进 source_docs 或任何槽位。5) 从 A00 提取 request_id、form_code=F02、project_name、rule_lib_version 写入 audit_meta。本步骤必须识别完全部角色；后续节点会从 source_docs 取路径再自行 read_file。结束前必须且只能调用一次 mcp__staffdeck__submit_step_result。参数必须同时含两个必填字段 status 与 reply_fragment：status='completed'，reply_fragment=本步骤给用户的一句话简短进度说明。并带 slot_updates={'attachment_role_map':[...],'source_docs':{'A00':'路径',...},'audit_meta':{...}}；next_step_id='n1_attachment'。",
       "optional": false,
       "expected_user_info": [],
       "allowed_actions": [
@@ -85,7 +86,7 @@
       "node_id": "n1_attachment",
       "type": "collect_info",
       "name": "要素1 流程附件资料齐全",
-      "instruction": "从槽位 source_docs 按逻辑角色取正文（角色由 n0 按内容识别，文件名不固定；禁止重新读文件）。按规则 ZC-F02-R01 逐项点验必备附件：采购方案文件(A01)、决策纪要文件包(A02)、采购（招标）文件全文(A03)。决策纪要缺失→level='关注'；采购方案或招标文件全文缺失→level='风险'（否决）；三项齐备→level='通过'。形成一条 item：seq='01'，element_tag='流程附件资料齐全'，opinion=一句话含缺失角色对应的实际文件名或齐备结论，level=上述之一，rule_id='ZC-F02-R01'，evidence=attachment_role_map 中的附件清单与实际文件名证据摘要。把该 item 追加到槽位 review_items。规则正文见知识库《规则-非工程招标点检 F02》（若 capability_refs.knowledge_base_ids 为空则按 instruction 内联口径执行）。结束前必须且只能调用一次 mcp__staffdeck__submit_step_result。参数必须同时含两个必填字段 status 与 reply_fragment：status='completed'，reply_fragment=本步骤给用户的一句话简短进度说明。并带 slot_updates={'review_items':[已累积的 items]}；next_step_id='n2_method'。",
+      "instruction": "从槽位 attachment_role_map 按逻辑角色核对附件是否齐备（角色由 n0 按内容识别，文件名不固定；本步骤只需角色映射，不读正文）。按规则 ZC-F02-R01 逐项点验必备附件：采购方案文件(A01)、决策纪要文件包(A02)、采购（招标）文件全文(A03)。决策纪要缺失→level='关注'；采购方案或招标文件全文缺失→level='风险'（否决）；三项齐备→level='通过'。形成一条 item：seq='01'，element_tag='流程附件资料齐全'，opinion=一句话含缺失角色对应的实际文件名或齐备结论，level=上述之一，rule_id='ZC-F02-R01'，evidence=attachment_role_map 中的附件清单与实际文件名证据摘要。把该 item 追加到槽位 review_items。规则正文见知识库《规则-非工程招标点检 F02》（若 capability_refs.knowledge_base_ids 为空则按 instruction 内联口径执行）。结束前必须且只能调用一次 mcp__staffdeck__submit_step_result。参数必须同时含两个必填字段 status 与 reply_fragment：status='completed'，reply_fragment=本步骤给用户的一句话简短进度说明。并带 slot_updates={'review_items':[已累积的 items]}；next_step_id='n2_method'。",
       "optional": false,
       "expected_user_info": [],
       "allowed_actions": [
@@ -113,11 +114,12 @@
       "node_id": "n2_method",
       "type": "collect_info",
       "name": "要素2 采购方式合规",
-      "instruction": "从槽位 source_docs 按角色取 A00（OA呈批表）与 A02（决策纪要）正文（禁止重新读文件）。按规则 ZC-F02-R02：比对 A00.form_fields.采购方式 与 A02 决议事项一载明的采购方式；不一致→level='风险'（否决）；一致→再校验 A00.最高限价 <= 预算金额，超限→'风险'，否则→'通过'。opinion 必须含两处采购方式的原值与金额。item：seq='02'，element_tag='采购方式合规'，rule_id='ZC-F02-R02'，evidence 写明比对来源。追加到 review_items。结束前必须且只能调用一次 mcp__staffdeck__submit_step_result。参数必须同时含两个必填字段 status 与 reply_fragment：status='completed'，reply_fragment=本步骤给用户的一句话简短进度说明。并带 slot_updates={'review_items':[已累积的 items]}；next_step_id='n3_text'。",
+      "instruction": "从槽位 source_docs 取 A00、A02 对应的 workspace_path 路径字符串，用 mcp__staffdeck__sandbox_execute 的 read_file 读取这两个文件正文再判定（n0 只存了路径未存正文）。按规则 ZC-F02-R02：比对 A00.form_fields.采购方式 与 A02 决议事项一载明的采购方式；不一致→level='风险'（否决）；一致→再校验 A00.最高限价 <= 预算金额，超限→'风险'，否则→'通过'。opinion 必须含两处采购方式的原值与金额。item：seq='02'，element_tag='采购方式合规'，rule_id='ZC-F02-R02'，evidence 写明比对来源。追加到 review_items。结束前必须且只能调用一次 mcp__staffdeck__submit_step_result。参数必须同时含两个必填字段 status 与 reply_fragment：status='completed'，reply_fragment=本步骤给用户的一句话简短进度说明。并带 slot_updates={'review_items':[已累积的 items]}；next_step_id='n3_text'。",
       "optional": false,
       "expected_user_info": [],
       "allowed_actions": [
-        "continue_flow"
+        "continue_flow",
+        "call_tool:read_file"
       ],
       "knowledge_scope": {},
       "capability_refs": {
@@ -141,11 +143,12 @@
       "node_id": "n3_text",
       "type": "collect_info",
       "name": "要素3 招标文件文本检查",
-      "instruction": "从槽位 source_docs 按角色取 A03（招标文件全文）正文（禁止重新读文件）。按规则 ZC-F02-R03 检查上下文一致性、错漏、敏感信息、格式规范：重点核对第二章前附表 2.2 最高限价与第五章 5.4 所述限价是否一致；不一致或存在其他错漏→level='关注'，均无→'通过'。opinion 写明具体章节与数值。item：seq='03'，element_tag='招标文件文本检查'，rule_id='ZC-F02-R03'，evidence 写明 A03 章节。追加到 review_items。结束前必须且只能调用一次 mcp__staffdeck__submit_step_result。参数必须同时含两个必填字段 status 与 reply_fragment：status='completed'，reply_fragment=本步骤给用户的一句话简短进度说明。并带 slot_updates={'review_items':[已累积的 items]}；next_step_id='n4_qualification'。",
+      "instruction": "从槽位 source_docs 取 A03 对应的 workspace_path 路径，用 read_file 读取该招标文件正文再判定（n0 只存路径未存正文）。按规则 ZC-F02-R03 检查上下文一致性、错漏、敏感信息、格式规范：重点核对第二章前附表 2.2 最高限价与第五章 5.4 所述限价是否一致；不一致或存在其他错漏→level='关注'，均无→'通过'。opinion 写明具体章节与数值。item：seq='03'，element_tag='招标文件文本检查'，rule_id='ZC-F02-R03'，evidence 写明 A03 章节。追加到 review_items。结束前必须且只能调用一次 mcp__staffdeck__submit_step_result。参数必须同时含两个必填字段 status 与 reply_fragment：status='completed'，reply_fragment=本步骤给用户的一句话简短进度说明。并带 slot_updates={'review_items':[已累积的 items]}；next_step_id='n4_qualification'。",
       "optional": false,
       "expected_user_info": [],
       "allowed_actions": [
-        "continue_flow"
+        "continue_flow",
+        "call_tool:read_file"
       ],
       "knowledge_scope": {},
       "capability_refs": {
@@ -169,11 +172,12 @@
       "node_id": "n4_qualification",
       "type": "collect_info",
       "name": "要素4 资格要求",
-      "instruction": "从槽位 source_docs 按角色取 A03（招标文件全文）第三章与 A01（采购方案）的采购需求（禁止重新读文件）。按规则 ZC-F02-R04 逐条比对资格条件与采购需求关联性：出现特定品牌/专利/产地、指定特定客户或项目业绩、资质等级超出项目规模、地域性限制任一→level='风险'（否决）；均无→'通过'。注意本项目是非工程货物采购且方案明确不指定品牌，据此核对 A03 第 3.2/3.4 条。opinion 逐条点出违规条款号。item：seq='04'，element_tag='资格要求'，rule_id='ZC-F02-R04'，evidence 写明 A03 第三章条款。追加到 review_items。结束前必须且只能调用一次 mcp__staffdeck__submit_step_result。参数必须同时含两个必填字段 status 与 reply_fragment：status='completed'，reply_fragment=本步骤给用户的一句话简短进度说明。并带 slot_updates={'review_items':[已累积的 items]}；next_step_id='n5_bid_bond'。",
+      "instruction": "从槽位 source_docs 取 A03、A01 对应路径，用 read_file 读取两文件正文，聚焦 A03 第三章资格条件与 A01 采购需求再判定（n0 只存路径未存正文）。按规则 ZC-F02-R04 逐条比对资格条件与采购需求关联性：出现特定品牌/专利/产地、指定特定客户或项目业绩、资质等级超出项目规模、地域性限制任一→level='风险'（否决）；均无→'通过'。注意本项目是非工程货物采购且方案明确不指定品牌，据此核对 A03 第 3.2/3.4 条。opinion 逐条点出违规条款号。item：seq='04'，element_tag='资格要求'，rule_id='ZC-F02-R04'，evidence 写明 A03 第三章条款。追加到 review_items。结束前必须且只能调用一次 mcp__staffdeck__submit_step_result。参数必须同时含两个必填字段 status 与 reply_fragment：status='completed'，reply_fragment=本步骤给用户的一句话简短进度说明。并带 slot_updates={'review_items':[已累积的 items]}；next_step_id='n5_bid_bond'。",
       "optional": false,
       "expected_user_info": [],
       "allowed_actions": [
-        "continue_flow"
+        "continue_flow",
+        "call_tool:read_file"
       ],
       "knowledge_scope": {},
       "capability_refs": {
@@ -197,11 +201,12 @@
       "node_id": "n5_bid_bond",
       "type": "collect_info",
       "name": "要素5 投标保证金",
-      "instruction": "从槽位 source_docs 按角色取 A00（OA呈批表）与 A03（招标文件全文）第四章（禁止重新读文件）。按规则 ZC-F02-R05：投标保证金不得超过上限价的 2%；无保证金、超上限、排除保函/保险任一→level='关注'；金额合规且接受保函/保险→'通过'。opinion 必须写出保证金金额、上限价、2% 计算结果与递交方式。item：seq='05'，element_tag='投标保证金'，rule_id='ZC-F02-R05'，evidence 写明 A03 角色对应文件的第四章与 A00 字段。追加到 review_items。结束前必须且只能调用一次 mcp__staffdeck__submit_step_result。参数必须同时含两个必填字段 status 与 reply_fragment：status='completed'，reply_fragment=本步骤给用户的一句话简短进度说明。并带 slot_updates={'review_items':[已累积的 items]}；next_step_id='n6_contract'。",
+      "instruction": "从槽位 source_docs 取 A00、A03 对应路径，用 read_file 读取两文件正文，聚焦 A03 第四章投标保证金再判定（n0 只存路径未存正文）。按规则 ZC-F02-R05：投标保证金不得超过上限价的 2%；无保证金、超上限、排除保函/保险任一→level='关注'；金额合规且接受保函/保险→'通过'。opinion 必须写出保证金金额、上限价、2% 计算结果与递交方式。item：seq='05'，element_tag='投标保证金'，rule_id='ZC-F02-R05'，evidence 写明 A03 角色对应文件的第四章与 A00 字段。追加到 review_items。结束前必须且只能调用一次 mcp__staffdeck__submit_step_result。参数必须同时含两个必填字段 status 与 reply_fragment：status='completed'，reply_fragment=本步骤给用户的一句话简短进度说明。并带 slot_updates={'review_items':[已累积的 items]}；next_step_id='n6_contract'。",
       "optional": false,
       "expected_user_info": [],
       "allowed_actions": [
-        "continue_flow"
+        "continue_flow",
+        "call_tool:read_file"
       ],
       "knowledge_scope": {},
       "capability_refs": {
@@ -225,11 +230,12 @@
       "node_id": "n6_contract",
       "type": "collect_info",
       "name": "要素6 商务及合同核心条款",
-      "instruction": "从槽位 source_docs 按角色取 A04（合同模板）与 A00（OA呈批表）正文（禁止重新读文件）。按规则 ZC-F02-R06 核对四类问题：①履约保证金>合同金额10% 或仅收现金不接受保函/保险，或退还节点/条件不清；②付款/验收条件单方面转嫁风险、无依据超长质保/回款周期；③验收标准模糊无量化指标、验收主体/流程缺失；④违约条款权责不对等或违约金上限不合理。命中任一→level='关注'；均合规→'通过'。opinion 逐条点出 A04 角色对应文件的条款号与关键比例/天数。item：seq='06'，element_tag='商务及合同核心条款'，rule_id='ZC-F02-R06'，evidence 写明 A04 角色对应文件的条款。追加到 review_items。结束前必须且只能调用一次 mcp__staffdeck__submit_step_result。参数必须同时含两个必填字段 status 与 reply_fragment：status='completed'，reply_fragment=本步骤给用户的一句话简短进度说明。并带 slot_updates={'review_items':[已累积的 items]}；next_step_id='n7_scoring'。",
+      "instruction": "从槽位 source_docs 取 A04、A00 对应路径，用 read_file 读取两文件正文再判定（n0 只存路径未存正文）。按规则 ZC-F02-R06 核对四类问题：①履约保证金>合同金额10% 或仅收现金不接受保函/保险，或退还节点/条件不清；②付款/验收条件单方面转嫁风险、无依据超长质保/回款周期；③验收标准模糊无量化指标、验收主体/流程缺失；④违约条款权责不对等或违约金上限不合理。命中任一→level='关注'；均合规→'通过'。opinion 逐条点出 A04 角色对应文件的条款号与关键比例/天数。item：seq='06'，element_tag='商务及合同核心条款'，rule_id='ZC-F02-R06'，evidence 写明 A04 角色对应文件的条款。追加到 review_items。结束前必须且只能调用一次 mcp__staffdeck__submit_step_result。参数必须同时含两个必填字段 status 与 reply_fragment：status='completed'，reply_fragment=本步骤给用户的一句话简短进度说明。并带 slot_updates={'review_items':[已累积的 items]}；next_step_id='n7_scoring'。",
       "optional": false,
       "expected_user_info": [],
       "allowed_actions": [
-        "continue_flow"
+        "continue_flow",
+        "call_tool:read_file"
       ],
       "knowledge_scope": {},
       "capability_refs": {
@@ -253,11 +259,12 @@
       "node_id": "n7_scoring",
       "type": "collect_info",
       "name": "要素7 评分细则",
-      "instruction": "从槽位 source_docs 按角色取 A03（招标文件全文）第五章（禁止重新读文件）。按规则 ZC-F02-R07 核对：特定品牌/专利/产地、业绩指定特定客户或项目或超规模、技术参数高于行业通用标准、地域性限制，任一→level='关注'；无→'通过'。opinion 逐条点出 5.x 条款号。item：seq='07'，element_tag='评分细则'，rule_id='ZC-F02-R07'，evidence 写明 A03 第五章条款。追加到 review_items。结束前必须且只能调用一次 mcp__staffdeck__submit_step_result。参数必须同时含两个必填字段 status 与 reply_fragment：status='completed'，reply_fragment=本步骤给用户的一句话简短进度说明。并带 slot_updates={'review_items':[已累积的 items]}；next_step_id='n8_objection'。",
+      "instruction": "从槽位 source_docs 取 A03 对应路径，用 read_file 读取该招标文件正文，聚焦第五章评分细则再判定（n0 只存路径未存正文）。按规则 ZC-F02-R07 核对：特定品牌/专利/产地、业绩指定特定客户或项目或超规模、技术参数高于行业通用标准、地域性限制，任一→level='关注'；无→'通过'。opinion 逐条点出 5.x 条款号。item：seq='07'，element_tag='评分细则'，rule_id='ZC-F02-R07'，evidence 写明 A03 第五章条款。追加到 review_items。结束前必须且只能调用一次 mcp__staffdeck__submit_step_result。参数必须同时含两个必填字段 status 与 reply_fragment：status='completed'，reply_fragment=本步骤给用户的一句话简短进度说明。并带 slot_updates={'review_items':[已累积的 items]}；next_step_id='n8_objection'。",
       "optional": false,
       "expected_user_info": [],
       "allowed_actions": [
-        "continue_flow"
+        "continue_flow",
+        "call_tool:read_file"
       ],
       "knowledge_scope": {},
       "capability_refs": {
@@ -281,11 +288,12 @@
       "node_id": "n8_objection",
       "type": "collect_info",
       "name": "要素8 异议澄清弃标流程约定",
-      "instruction": "从槽位 source_docs 按角色取 A03（招标文件全文）第七章（禁止重新读文件）。按规则 ZC-F02-R08 核对：①异议/质疑受理主体、时限、答复要求是否完备；②澄清补遗是否写明「实质性变更需重新公告并顺延投标截止时间」；③中标候选人弃标后的处理流程是否明确。任一缺失→level='关注'；三项均完备→'通过'。opinion 逐条点出 7.x 条款号。item：seq='08'，element_tag='异议澄清弃标流程约定'，rule_id='ZC-F02-R08'，evidence 写明 A03 第七章条款。追加到 review_items，确认总数=8。结束前必须且只能调用一次 mcp__staffdeck__submit_step_result。参数必须同时含两个必填字段 status 与 reply_fragment：status='completed'，reply_fragment=本步骤给用户的一句话简短进度说明。并带 slot_updates={'review_items':[已累积的 items]}；next_step_id='n9_aggregate'。",
+      "instruction": "从槽位 source_docs 取 A03 对应路径，用 read_file 读取该招标文件正文，聚焦第七章异议与澄清再判定（n0 只存路径未存正文）。按规则 ZC-F02-R08 核对：①异议/质疑受理主体、时限、答复要求是否完备；②澄清补遗是否写明「实质性变更需重新公告并顺延投标截止时间」；③中标候选人弃标后的处理流程是否明确。任一缺失→level='关注'；三项均完备→'通过'。opinion 逐条点出 7.x 条款号。item：seq='08'，element_tag='异议澄清弃标流程约定'，rule_id='ZC-F02-R08'，evidence 写明 A03 第七章条款。追加到 review_items，确认总数=8。结束前必须且只能调用一次 mcp__staffdeck__submit_step_result。参数必须同时含两个必填字段 status 与 reply_fragment：status='completed'，reply_fragment=本步骤给用户的一句话简短进度说明。并带 slot_updates={'review_items':[已累积的 items]}；next_step_id='n9_aggregate'。",
       "optional": false,
       "expected_user_info": [],
       "allowed_actions": [
-        "continue_flow"
+        "continue_flow",
+        "call_tool:read_file"
       ],
       "knowledge_scope": {},
       "capability_refs": {
