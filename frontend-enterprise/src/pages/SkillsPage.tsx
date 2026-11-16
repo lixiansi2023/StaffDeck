@@ -23,6 +23,7 @@ import {
 } from '@/components/ui';
 import { Button as UIButton } from '@/components/ui/button';
 import { notify } from '@/components/ui/app-toast';
+import { copySkillCardAsDraft } from '@/lib/sopDraft';
 import { cn } from '@/lib/utils';
 import {
   MENU_CONTENT_CLASS,
@@ -133,6 +134,7 @@ export default function SkillsPage({
   const [rollbackTarget, setRollbackTarget] = useState<SkillVersionRead | null>(null);
   const [promoteTarget, setPromoteTarget] = useState<SkillRead | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
+  const [copyingSkillId, setCopyingSkillId] = useState('');
 
   const load = async () => {
     setLoading(true);
@@ -316,6 +318,14 @@ export default function SkillsPage({
           <DropdownMenuItem className={MENU_ITEM_CLASS} onSelect={() => openEdit(row)}>
             <IconEdit />
             {isOverallAgent ? '编辑' : '编辑本地版本'}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className={MENU_ITEM_CLASS}
+            disabled={Boolean(copyingSkillId)}
+            onSelect={() => void copySop(row)}
+          >
+            <Copy />
+            复制 SOP
           </DropdownMenuItem>
           <DropdownMenuItem className={MENU_ITEM_CLASS} onSelect={() => void openVersions(row)}>
             <IconHistory />
@@ -509,6 +519,27 @@ export default function SkillsPage({
       await load();
     } catch (error) {
       notify.error(error instanceof Error ? error.message : '转为草稿失败');
+    }
+  }
+
+  async function copySop(row: SkillRead) {
+    if (copyingSkillId) return;
+    setCopyingSkillId(row.skill_id);
+    try {
+      await api.post<SkillRead>(
+        `/api/enterprise/skills?tenant_id=${TENANT_ID}${agentQuery()}`,
+        {
+          tenant_id: TENANT_ID,
+          content: copySkillCardAsDraft(row.content),
+          status: 'draft',
+        },
+      );
+      notify.success('已复制 SOP');
+      await load();
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '复制失败');
+    } finally {
+      setCopyingSkillId('');
     }
   }
 

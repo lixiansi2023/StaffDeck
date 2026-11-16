@@ -3962,5 +3962,12 @@
   "同名预设已存在，请使用其他名称": "A preset with this name already exists. Choose a different name.",
   "装配正在应用，请完成后再保存预设": "The assembly is being applied. Save the preset after it finishes.",
   "尚无运行中的装配可供保存": "There is no running assembly to save yet.",
-  "预设名称不能为空且不超过 80 字，说明不超过 500 字": "Enter a name of up to 80 characters and a description of up to 500 characters."
+  "预设名称不能为空且不超过 80 字，说明不超过 500 字": "Enter a name of up to 80 characters and a description of up to 500 characters.",
+  "复制 SOP": "Copy SOP",
+  "请先生成或打开一个 SOP": "Generate or open a SOP first",
+  "已新建空白 SOP": "Blank SOP created",
+  "已复制 SOP，可编辑后另存为新 SOP": "SOP copied. Edit it and save as a new SOP",
+  "新节点": "New node",
+  "（副本）": " (Copy)",
+  "已复制 SOP": "SOP copied"
 }

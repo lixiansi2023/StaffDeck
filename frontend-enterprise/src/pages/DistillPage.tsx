@@ -1,4 +1,5 @@
 import { countEdgeLabels } from '../lib/sop-edge-counts';
+import { copySkillCardAsDraft, createBlankSkillCard, uniqueDraftSkillId } from '../lib/sopDraft';
 import {
   ApiOutlined,
   ArrowLeftOutlined,
@@ -21,7 +22,7 @@ import {
   UploadOutlined,
   WarningOutlined,
 } from '../icons';
-import { Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from 'lucide-react';
+import { Copy, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from 'lucide-react';
 import {
   useEffect,
   useCallback,
@@ -148,8 +149,6 @@ import {
   FLOW_CHIP_LIST_CLASS,
   FLOW_CHIP_MUTED_CLASS,
   FLOW_CLASS,
-  FLOW_COMPACT_META_CLASS,
-  FLOW_COMPACT_ROW_CLASS,
   FLOW_CONNECTION_PREVIEW_CLASS,
   FLOW_EDGES_CLASS,
   FLOW_EDGE_PATH_CLASS,
@@ -157,9 +156,13 @@ import {
   FLOW_META_CLASS,
   FLOW_META_LABEL_CLASS,
   FLOW_META_ROW_CLASS,
-  FLOW_NODE_BADGES_CLASS,
   FLOW_NODE_CONNECT_HANDLE_ACTIVE_CLASS,
   FLOW_NODE_CONNECT_HANDLE_CLASS,
+  FLOW_NODE_FIELD_LABEL_CLASS,
+  FLOW_NODE_FIELD_ROW_CLASS,
+  FLOW_NODE_FIELD_VALUE_CLASS,
+  FLOW_NODE_FIELDS_CLASS,
+  FLOW_NODE_INSTRUCTION_CLASS,
   FLOW_NODE_POSITION_CLASS,
   FLOW_NODE_SHELL_CLASS,
   FLOW_NODE_SUMMARY_CLASS,
@@ -171,7 +174,6 @@ import {
   FLOW_INSPECTOR_CLASS,
   FLOW_INSPECTOR_EMPTY_CLASS,
   FLOW_INSPECTOR_HEADER_CLASS,
-  FLOW_ROUTE_COUNT_CLASS,
   FLOW_RULE_CONDITION_CONTROLS_CLASS,
   FLOW_RULE_CONDITION_INPUT_CLASS,
   FLOW_RULE_DELETE_CLASS,
@@ -399,6 +401,17 @@ const REQUIRED_CAPABILITY_FIELD_BY_ALLOWED: Record<string, string> = {
   tool_ids: 'required_tool_ids',
   knowledge_base_ids: 'required_knowledge_base_ids',
 };
+
+export const SKILL_FLOW_NODE_HEIGHT = 300;
+
+const NODE_INSTRUCTION_PREVIEW_LIMIT = 120;
+
+export function previewNodeInstruction(value: unknown, limit = NODE_INSTRUCTION_PREVIEW_LIMIT): string {
+  const text = String(value ?? '').replace(/\s+/g, ' ').trim();
+  if (!text) return '暂无说明';
+  const chars = Array.from(text);
+  return chars.length > limit ? `${chars.slice(0, limit).join('')}……` : text;
+}
 
 const NODE_TYPE_OPTIONS: SelectOption[] = [
   { value: 'collect_info', label: '收集信息' },
@@ -638,6 +651,7 @@ export default function DistillPage({ active = true, searchParamsOverride, curre
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const [clearAfterSave, setClearAfterSave] = useState(false);
   const [clearNewConfirm, setClearNewConfirm] = useState<{ title: string; description: string } | null>(null);
+  const [pendingWorkspaceDraft, setPendingWorkspaceDraft] = useState<SkillCard | null>(null);
   const [rerunConfirm, setRerunConfirm] = useState<{
     index: number;
     snapshot: DistillHistorySnapshot;
@@ -1303,7 +1317,8 @@ export default function DistillPage({ active = true, searchParamsOverride, curre
       });
       if (clearAfterSave) {
         setClearAfterSave(false);
-        clearDistillWorkspace();
+        clearDistillWorkspace(pendingWorkspaceDraft);
+        setPendingWorkspaceDraft(null);
         notify.success('SOP 已保存，当前改写已清空');
       } else {
         notify.success(renamedSkillId ? `SOP ID 已存在，已另存为 ${renamedSkillId}` : 'SOP 已保存');
@@ -1813,13 +1828,37 @@ export default function DistillPage({ active = true, searchParamsOverride, curre
     setClearConfirmOpen(true);
   }
 
+  function enterDraftWorkspace(nextDraft: SkillCard, message: string) {
+    if (loading) return;
+    if (hasUnsavedSkillChanges()) {
+      setPendingWorkspaceDraft(nextDraft);
+      setClearConfirmOpen(true);
+      return;
+    }
+    clearDistillWorkspace(nextDraft);
+    notify.success(message);
+  }
+
+  function handleCreateBlank() {
+    enterDraftWorkspace(createBlankSkillCard(), '已新建空白 SOP');
+  }
+
+  function handleCopySop() {
+    const source = loadedSkill?.content || draft;
+    if (!source) {
+      notify.warning('请先生成或打开一个 SOP');
+      return;
+    }
+    enterDraftWorkspace(copySkillCardAsDraft(source), '已复制 SOP，可编辑后另存为新 SOP');
+  }
+
   function hasUnsavedSkillChanges() {
     const targetDraft = lockNullableSkillIdForDraft(pendingChange?.nextDraft || draft, lockedSkillId);
     if (!targetDraft) return false;
     return hasSkillContentChanges(targetDraft, lastSavedDraft);
   }
 
-  function clearDistillWorkspace() {
+  function clearDistillWorkspace(initialDraft: SkillCard | null = null) {
     clearAnimationTimers();
     abortRef.current?.abort();
     Object.values(uploadControllersRef.current).forEach((controller) => controller.abort());
@@ -1831,9 +1870,28 @@ export default function DistillPage({ active = true, searchParamsOverride, curre
     const nextCacheKey = `skill-distill:${TENANT_ID}:${activeAgentId || 'default'}:create:${nextWorkspaceId}`;
     removeDistillCache(cacheKey);
     removeDistillCache(nextCacheKey);
+    if (initialDraft) {
+      writeDistillCache(nextCacheKey, {
+        draft: initialDraft,
+        loadedSkill: null,
+        lastSavedDraft: null,
+        messages: DEFAULT_DISTILL_MESSAGES,
+        input: '',
+        selectedPaths: DEFAULT_TARGET_PATHS,
+        highlightedPaths: [],
+        updatingPaths: [],
+        dirtyPaths: [],
+        textDiffs: [],
+        pendingChange: null,
+        viewMode: 'flow',
+        attachments: [],
+        streamStatus: '',
+        activeJob: null,
+      });
+    }
     setCacheReady(false);
     setHydratedCacheKey('');
-    setDraft(null);
+    setDraft(initialDraft);
     setLoadedSkill(null);
     setLastSavedDraft(null);
     setMessages(DEFAULT_DISTILL_MESSAGES);
@@ -2632,6 +2690,21 @@ export default function DistillPage({ active = true, searchParamsOverride, curre
           title={viewMode === 'source' ? '源码' : '流程图'}
           extra={
             <div className="flex flex-wrap justify-end gap-[8px]">
+              <UIButton variant="outline" className={CARD_OUTLINE_BUTTON_CLASS} disabled={loading} onClick={handleCreateBlank}>
+                <PlusOutlined />
+                新建空白 SOP
+              </UIButton>
+              <SimpleTooltip title={loadedSkill?.content || draft ? '' : '请先生成或打开一个 SOP'}>
+                <UIButton
+                  variant="outline"
+                  className={CARD_OUTLINE_BUTTON_CLASS}
+                  disabled={loading || !(loadedSkill?.content || draft)}
+                  onClick={handleCopySop}
+                >
+                  <Copy />
+                  复制 SOP
+                </UIButton>
+              </SimpleTooltip>
               <UIButton variant="outline" className={CARD_OUTLINE_BUTTON_CLASS} disabled={loading} onClick={handleClearClick}>
                 清空
               </UIButton>
@@ -2730,7 +2803,8 @@ export default function DistillPage({ active = true, searchParamsOverride, curre
               variant="outline"
               onClick={() => {
                 setClearConfirmOpen(false);
-                clearDistillWorkspace();
+                clearDistillWorkspace(pendingWorkspaceDraft);
+                setPendingWorkspaceDraft(null);
               }}
             >
               不保存清空
@@ -4790,15 +4864,11 @@ function SkillFlow({
                   index={item.index}
                   step={item.step}
                   terminal={terminalSet.has(item.nodeId)}
-                  outgoingEdges={edgeMap[item.nodeId] || []}
                   selectedPaths={selectedPaths}
                   highlightedPaths={highlightedPaths}
                   updatingPaths={updatingPaths}
                   dirtyPaths={dirtyPaths}
                   textDiffs={textDiffs}
-                  toolDescriptions={toolDescriptions}
-                  toolStatuses={toolStatuses}
-                  sopSkills={sopSkills}
                   selected={selectedNodeId === item.nodeId}
                   connecting={connectionDrag?.sourceNodeId === item.nodeId || armedConnectionSourceId === item.nodeId}
                   dropTarget={connectionDrag?.targetNodeId === item.nodeId}
@@ -5092,15 +5162,11 @@ function SkillFlowNodeCard({
   index,
   step,
   terminal,
-  outgoingEdges,
   selectedPaths,
   highlightedPaths,
   updatingPaths,
   dirtyPaths,
   textDiffs,
-  toolDescriptions,
-  toolStatuses,
-  sopSkills,
   selected,
   connecting,
   dropTarget,
@@ -5114,15 +5180,11 @@ function SkillFlowNodeCard({
   index: number;
   step: Record<string, unknown>;
   terminal: boolean;
-  outgoingEdges: Array<Record<string, unknown>>;
   selectedPaths: string[];
   highlightedPaths: string[];
   updatingPaths: string[];
   dirtyPaths: string[];
   textDiffs: TextDiffAnimation[];
-  toolDescriptions: ToolDescriptionMap;
-  toolStatuses: ToolStatusMap;
-  sopSkills: SkillRead[];
   selected: boolean;
   connecting: boolean;
   dropTarget: boolean;
@@ -5135,13 +5197,11 @@ function SkillFlowNodeCard({
 }) {
   const nodeId = String(step.node_id || step.step_id || `node_${index + 1}`);
   const path = stepTargetPath(index);
-  const expectedInfo = asStringList(step.expected_user_info);
-  const actionList = asStringList(step.allowed_actions);
-  const instruction = String(step.instruction || '暂无说明');
-  const isSubflow = String(step.type || '') === 'subflow';
-  const childSop = isSubflow
-    ? sopSkills.find((item) => item.skill_id === String(step.sub_sop_id || ''))
-    : undefined;
+  const name = String(step.name || nodeId);
+  const nodeState = [
+    Boolean(step.optional) ? '可选' : '必选',
+    terminal ? '终止节点' : '流程节点',
+  ].join(' · ');
   return (
     <div className={FLOW_NODE_SHELL_CLASS}>
       <SelectableTarget
@@ -5159,34 +5219,21 @@ function SkillFlowNodeCard({
       >
         {selectedPaths.includes(path) && <span className={SELECTION_MARK_CLASS}><CheckOutlined /></span>}
         <span>节点 {index + 1}</span>
-        <strong><InlineDiffText path={path} field="name" value={String(step.name || nodeId)} diffs={textDiffs} /></strong>
-        <small>{nodeId}</small>
-        <div className={FLOW_NODE_BADGES_CLASS}>
-          <span className={FLOW_CHIP_CLASS}>{nodeTypeLabel(String(step.type || 'collect_info'))}</span>
-          {Boolean(step.optional) && <span className={FLOW_CHIP_CLASS}>可选</span>}
-          {terminal && <span className={FLOW_CHIP_CLASS}>终止</span>}
+        <div className={FLOW_NODE_FIELDS_CLASS}>
+          <FlowNodeFieldRow label="节点名称">
+            <strong className="block truncate text-[13px] font-semibold">
+              <InlineDiffText path={path} field="name" value={name} diffs={textDiffs} />
+            </strong>
+          </FlowNodeFieldRow>
+          <FlowNodeFieldRow label="节点 ID">
+            <span className="block truncate font-mono" title={nodeId}>{nodeId}</span>
+          </FlowNodeFieldRow>
+          <FlowNodeFieldRow label="节点类型">{nodeTypeLabel(String(step.type || 'collect_info'))}</FlowNodeFieldRow>
+          <FlowNodeFieldRow label="节点状态">{nodeState}</FlowNodeFieldRow>
         </div>
-        {isSubflow ? (
-          <NestedSopPreview childSop={childSop} subSopId={String(step.sub_sop_id || '')} />
-        ) : (
-          <p className={FLOW_NODE_SUMMARY_CLASS} title={instruction}>
-            <InlineDiffText path={path} field="instruction" value={instruction} diffs={textDiffs} />
-          </p>
-        )}
-        <div className={FLOW_COMPACT_META_CLASS}>
-          {!isSubflow && expectedInfo.length > 0 && (
-            <div className={FLOW_COMPACT_ROW_CLASS}>
-              <span>字段</span>
-              <PlainChipList values={expectedInfo} />
-            </div>
-          )}
-          {!isSubflow && actionList.length > 0 && (
-            <div className={FLOW_COMPACT_ROW_CLASS}>
-              <span>动作</span>
-              <FlowActionList actions={actionList} toolDescriptions={toolDescriptions} toolStatuses={toolStatuses} />
-            </div>
-          )}
-          {outgoingEdges.length > 0 && <span className={FLOW_ROUTE_COUNT_CLASS}>{outgoingRouteCountLabel(outgoingEdges)}</span>}
+        <div className={FLOW_NODE_INSTRUCTION_CLASS}>
+          <span className={FLOW_NODE_FIELD_LABEL_CLASS}>节点说明</span>
+          <p className={FLOW_NODE_SUMMARY_CLASS}>{previewNodeInstruction(step.instruction)}</p>
         </div>
       </SelectableTarget>
       {showConnectHandle && (
@@ -5207,33 +5254,11 @@ function SkillFlowNodeCard({
   );
 }
 
-function NestedSopPreview({ childSop, subSopId }: { childSop?: SkillRead; subSopId: string }) {
-  const childNodes = childSop ? skillGraphSteps(childSop.content) : [];
-  const visibleNodes = childNodes.slice(0, 4);
+function FlowNodeFieldRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="grid gap-[7px] rounded-[10px] border border-[#cfe5df] bg-[#f3faf7] p-[9px] text-[#315e59]">
-      <div className="flex min-w-0 items-center justify-between gap-[8px]">
-        <strong className="truncate text-[12px] font-semibold">{childSop?.name || '未找到子 SOP'}</strong>
-        <span className="shrink-0 rounded-full bg-white px-[7px] py-[2px] text-[10px] text-[#04756f]">共享字段</span>
-      </div>
-      <span className="truncate font-mono text-[10px] text-[#66817d]">{subSopId || '尚未选择 SOP'}</span>
-      {visibleNodes.length > 0 ? (
-        <div className="flex min-w-0 items-center gap-[4px] overflow-hidden" aria-label="子 SOP 节点预览">
-          {visibleNodes.map((node, index) => (
-            <div className="contents" key={String(node.node_id || index)}>
-              {index > 0 && <span className="shrink-0 text-[#8aa39f]">→</span>}
-              <span className="min-w-0 truncate rounded-md border border-[#d8e9e4] bg-white px-[6px] py-[3px] text-[10px]">
-                {String(node.name || node.node_id || `节点 ${index + 1}`)}
-              </span>
-            </div>
-          ))}
-          {childNodes.length > visibleNodes.length && (
-            <span className="shrink-0 text-[10px] text-[#66817d]">+{childNodes.length - visibleNodes.length}</span>
-          )}
-        </div>
-      ) : (
-        <span className="text-[10px] text-[#8a9694]">发布子 SOP 后将在这里显示其流程节点</span>
-      )}
+    <div className={FLOW_NODE_FIELD_ROW_CLASS}>
+      <span className={FLOW_NODE_FIELD_LABEL_CLASS}>{label}</span>
+      <span className={FLOW_NODE_FIELD_VALUE_CLASS}>{children}</span>
     </div>
   );
 }
@@ -5256,24 +5281,6 @@ function PlainChipList({ values }: { values: unknown }) {
         <span className={FLOW_CHIP_CLASS} key={`${item}_${index}`}>
           {item}
         </span>
-      ))}
-    </div>
-  );
-}
-
-function FlowActionList({
-  actions,
-  toolDescriptions,
-  toolStatuses,
-}: {
-  actions: string[];
-  toolDescriptions: ToolDescriptionMap;
-  toolStatuses: ToolStatusMap;
-}) {
-  return (
-    <div className="flex min-w-0 flex-wrap gap-[6px]">
-      {actions.map((action, index) => (
-        <ActionChip action={action} toolDescriptions={toolDescriptions} toolStatuses={toolStatuses} key={`${action}_${index}`} />
       ))}
     </div>
   );
@@ -5443,15 +5450,6 @@ function estimatedWrappedLines(value: unknown, charactersPerLine: number): numbe
   ), 0);
 }
 
-function estimateSkillFlowNodeHeight(nodes: Array<Record<string, unknown>>): number {
-  return Math.max(324, ...nodes.map((node) => {
-    const instructionHeight = estimatedWrappedLines(node.instruction || '暂无说明', 24) * 21;
-    const fieldRows = Math.ceil(asStringList(node.expected_user_info).length / 3) * 28;
-    const actionRows = Math.ceil(asStringList(node.allowed_actions).length / 2) * 28;
-    return 182 + instructionHeight + fieldRows + actionRows + 48;
-  }));
-}
-
 function estimateSkillFlowRootHeight(skill: SkillCard): number {
   const descriptionHeight = estimatedWrappedLines(skill.description || '暂无描述', 38) * 21;
   const infoRows = Math.ceil(asStringList(skill.required_info).length / 4) * 28;
@@ -5459,15 +5457,15 @@ function estimateSkillFlowRootHeight(skill: SkillCard): number {
   return Math.max(270, 154 + descriptionHeight + infoRows + intentRows + 72);
 }
 
-function buildSkillFlowCanvasLayout(
+export function buildSkillFlowCanvasLayout(
   skill: SkillCard,
   nodes: Array<Record<string, unknown>>,
-  nodeNameMap: Record<string, string>,
+  nodeNameMap: Record<string, string> = {},
   positionOverrides: Record<string, SkillFlowPosition> = {},
 ) {
   const layerLayout = buildSkillFlowLayout(skill, nodes);
   const cardWidth = 360;
-  const cardHeight = estimateSkillFlowNodeHeight(nodes);
+  const cardHeight = SKILL_FLOW_NODE_HEIGHT;
   const rootWidth = 500;
   const rootHeight = estimateSkillFlowRootHeight(skill);
   const columnGap = 188;
@@ -6033,23 +6031,6 @@ function hasDuplicateSiblingEdgeLabel(
     String(item.source_node_id || '').trim() === sourceId
     && normalizedEdgeLabel(item, nodeNameMap) === label
   )).length > 1;
-}
-
-function hasDuplicateOutgoingEdgeLabel(
-  edges: Array<Record<string, unknown>>,
-  nodeNameMap: Record<string, string> = {},
-): boolean {
-  if (edges.length <= 1) return false;
-  const labelCounts = edges.reduce<Record<string, number>>((acc, edge) => {
-    const label = normalizedEdgeLabel(edge, nodeNameMap);
-    acc[label] = (acc[label] || 0) + 1;
-    return acc;
-  }, {});
-  return Object.values(labelCounts).some((count) => count > 1);
-}
-
-function outgoingRouteCountLabel(edges: Array<Record<string, unknown>>): string {
-  return `${edges.length} 条${hasDuplicateOutgoingEdgeLabel(edges) ? '并行' : ''}流转`;
 }
 
 function flowEdgeDisplayLabel(
@@ -8019,15 +8000,6 @@ function canonicalizeSkillCapabilityRefs(skill: SkillCard): SkillCard {
     return normalized;
   });
   return next;
-}
-
-function uniqueDraftSkillId(skillId: string): string {
-  const normalized = (skillId || 'skill')
-    .trim()
-    .replace(/[^A-Za-z0-9_.-]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    || 'skill';
-  return `${normalized}_${Date.now().toString(36)}`;
 }
 
 function comparableSkillContent(skill: SkillCard): SkillCard {

@@ -368,14 +368,17 @@ export const FLOW_NODE_CHANGED_CLASS =
 export const FLOW_NODE_DIRTY_CLASS = 'bg-[#fffdf8] shadow-[inset_3px_0_0_#d8c7a4]';
 export const FLOW_NODE_UPDATING_CLASS = 'animate-pulse';
 
-export const FLOW_NODE_BADGES_CLASS = 'flex flex-wrap gap-[6px]';
+export const FLOW_NODE_FIELDS_CLASS = 'grid min-w-0 gap-[6px]';
+export const FLOW_NODE_FIELD_ROW_CLASS =
+  'grid min-w-0 grid-cols-[62px_minmax(0,1fr)] items-start gap-[8px]';
+export const FLOW_NODE_FIELD_LABEL_CLASS =
+  'text-[11px] font-semibold leading-[20px] text-[#858b9c]';
+export const FLOW_NODE_FIELD_VALUE_CLASS =
+  'min-w-0 text-[12px] leading-[20px] wrap-anywhere text-[#303442]';
+export const FLOW_NODE_INSTRUCTION_CLASS =
+  'grid min-w-0 gap-[3px] border-t border-[#eef0f3] pt-[8px]';
 export const FLOW_NODE_SUMMARY_CLASS =
-  'm-[2px_0_0] whitespace-pre-wrap text-[13px] leading-[1.55] wrap-anywhere text-[#687184]!';
-export const FLOW_COMPACT_META_CLASS = 'grid min-h-0 content-start gap-[7px]';
-export const FLOW_COMPACT_ROW_CLASS =
-  'grid min-w-0 grid-cols-[34px_minmax(0,1fr)] items-start gap-[8px] [&>span:first-child]:text-[12px] [&>span:first-child]:font-semibold [&>span:first-child]:leading-[24px] [&>span:first-child]:text-[#858b9c]';
-export const FLOW_ROUTE_COUNT_CLASS =
-  'w-fit rounded-full border border-dashed border-[#eceef1] bg-[#fafafa] px-2 py-[3px] text-[11px] leading-[1.3] text-[#858b9c]';
+  'm-0 max-h-[100px] overflow-hidden text-[12px] leading-[1.5] wrap-anywhere text-[#687184]!';
 export const FLOW_META_CLASS = 'mt-[6px] grid gap-[8px]';
 export const FLOW_META_ROW_CLASS = 'grid gap-[5px]';
 export const FLOW_META_LABEL_CLASS = 'text-[11px] font-semibold text-[#858b9c]';
