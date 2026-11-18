@@ -7093,3 +7093,10 @@ body,
     @apply border-border outline-ring/50;
   }
 }
+
+/* Dashboard page: replace all icons and images with transparent placeholders.
+   Elements keep their original box size so the layout is unchanged. */
+.dashboard-page svg,
+.dashboard-page img {
+  opacity: 0 !important;
+}

@@ -3,7 +3,6 @@ import { useState, type KeyboardEvent } from 'react';
 import { api, TENANT_ID } from '../api/client';
 import { setEnterpriseAuthSession, type EnterpriseAuthSession } from '../auth';
 import AppHeader from '../components/AppHeader';
-import BrandLogo from '../components/BrandLogo';
 import IconFieldClear from '../assets/icons/field-clear.svg?react';
 import IconFieldEye from '../assets/icons/field-eye.svg?react';
 import IconFieldEyeOn from '../assets/icons/field-eye-on.svg?react';
@@ -64,7 +63,6 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
     <div className="relative flex min-h-screen flex-col bg-white">
       <AppHeader
         className="h-[60px] shrink-0 px-[32px]"
-        left={<BrandLogo markSize={28} />}
         right={null}
       />
 
