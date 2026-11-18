@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import http.client
 import importlib
 import importlib.util
 import os
@@ -369,7 +370,7 @@ def _url_ready(url: str) -> bool:
     try:
         response = urllib.request.urlopen(url, timeout=2)
         return response.status < 500
-    except (OSError, urllib.error.URLError):
+    except (OSError, urllib.error.URLError, http.client.HTTPException):
         return False
     finally:
         if response is not None:

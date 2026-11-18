@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import http.client
 import importlib.util
 import os
 import subprocess
@@ -95,6 +96,16 @@ def test_url_ready_ignores_response_close_failure(monkeypatch) -> None:
 
     monkeypatch.setattr(dev.urllib.request, "urlopen", lambda *_args, **_kwargs: Response())
     assert dev._url_ready("http://127.0.0.1:5173/api/health") is True
+
+
+def test_url_ready_retries_malformed_http_response(monkeypatch) -> None:
+    dev = _load_script("dev")
+
+    def malformed_response(*_args, **_kwargs):
+        raise http.client.BadStatusLine("GET /api/health HTTP/1.1")
+
+    monkeypatch.setattr(dev.urllib.request, "urlopen", malformed_response)
+    assert dev._url_ready("http://127.0.0.1:5174/api/health") is False
 
 
 def test_dev_cli_honors_packaged_app_port_range(monkeypatch) -> None:
