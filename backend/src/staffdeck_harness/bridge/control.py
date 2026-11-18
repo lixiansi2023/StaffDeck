@@ -100,6 +100,7 @@ class ExecutionHost:
         self.engine_calls = {}
         self.engine_results = set()
         self.engine_failure = None
+        self.context_limit_error = None
         self.exhausted = False
         from app.core.capability_recovery import CapabilityRecovery
 

@@ -28,6 +28,7 @@ class ExecutionContext:
     evidence: list[dict[str, Any]]
     capability_results: list[dict[str, Any]]
     artifacts: list[dict[str, Any]]
+    same_step: bool
 
     @property
     def logical_id(self) -> str:
@@ -76,17 +77,25 @@ class ExecutionContext:
             requirement,
             scope,
             revision,
-            list(cp.get("transcript") or []),
+            (
+                list(cp.get("transcript") or [])
+                if requirement.kind != "sop" or same_step else []
+            ),
             list(cp.get("citations") or []),
             list(cp.get("evidence_results") or []),
             list(cp.get("capability_results") or []) if same_step else [],
             list(cp.get("artifacts") or []),
+            same_step,
         )
 
     def prepare(self, pooled) -> tuple[str, str]:
         cache = pooled.context_sessions
         native = cache.get(self.key)
-        warm = native is not None and native["revision"] == self.revision
+        warm = (
+            native is not None
+            and native["revision"] == self.revision
+            and (self.requirement.kind != "sop" or self.same_step)
+        )
         sid = native["session_id"] if warm else f"sd-loop-{self.key}-{uuid.uuid4().hex[:12]}"
         # A process ahead of the last committed checkpoint is unsafe to reuse on retry.
         cache[self.key] = {"session_id": sid, "revision": "inflight"}

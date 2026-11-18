@@ -40,7 +40,7 @@ def test_same_sop_resumes_history_in_another_user_turn_and_process():
     assert second.capability_results, "same-node successful receipts survive waiting for the user"
 
 
-def test_advancing_node_keeps_history_but_not_previous_node_receipts():
+def test_advancing_node_starts_fresh_engine_session_and_keeps_durable_results():
     first = context(requirement())
     proc = SimpleNamespace(context_sessions={})
     sid, _ = first.prepare(proc)
@@ -53,7 +53,17 @@ def test_advancing_node_keeps_history_but_not_previous_node_receipts():
         [{"tool_name": "lookup", "success": True}],
     )
     next_node = context(requirement(step="ship"), cp)
-    assert next_node.history and not next_node.capability_results
+    assert not next_node.history and not next_node.capability_results
+    next_sid, recovery = next_node.prepare(proc)
+    assert next_sid != sid and not recovery
+    next_cp = next_node.complete(
+        proc, next_sid,
+        TaskExecutionResult(task_frame_id="frame-1", status="awaiting_user", reply_fragment="ship?"),
+        [],
+    )
+    assert len(next_cp["transcript"]) == 2
+    same_node = context(requirement(step="ship"), next_cp)
+    assert same_node.prepare(proc) == (next_sid, "")
 
 
 def test_general_loop_survives_new_task_frame_but_sop_instances_are_isolated():

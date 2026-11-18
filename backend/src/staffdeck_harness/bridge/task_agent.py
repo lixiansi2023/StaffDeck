@@ -584,10 +584,13 @@ class HarnessV3TaskAgent:
                 content_blocks.insert(0, {"type": "text", "text": recovery})
             trace("harness_v3_context_bound", {"execution_loop_id": context.logical_id,
                   "engine_session_id": engine_session, "restored": bool(recovery),
-                  "history_entries": len(context.history), "loop_kind": requirement.kind})
+                  "history_entries": len(context.history), "loop_kind": requirement.kind,
+                  "remaining_actions": max_actions,
+                  "configured_max_actions": t.snapshot.session_policy["max_actions"]})
             def stop_requested():
                 return (cancelled() or execution_host.recovery_blocked is not None
-                        or execution_host.exhausted or execution_host.waiting_external_task is not None
+                        or execution_host.exhausted or execution_host.context_limit_error is not None
+                        or execution_host.waiting_external_task is not None
                         or execution_host.control_blocked is not None)
 
             def execution_turn(blocks):
@@ -595,10 +598,16 @@ class HarnessV3TaskAgent:
                 try:
                     outcome = self._run_engine_turn(proc, engine_session, blocks, stop_requested, trace)
                 except HarnessExecutionCancelled:
+                    if execution_host.context_limit_error and not cancelled():
+                        return finish(self._failed(requirement, "PROVIDER_CONTEXT_LIMIT",
+                            execution_host.context_limit_error, actions=execution_host.total_actions))
                     if cancelled() or not (execution_host.control_blocked or
                             (execution_host.argument_repair or {}).get('phase') == 'sop_result'):
                         raise
                     outcome = ([], '', 'submission_blocked')
+                if execution_host.context_limit_error:
+                    return finish(self._failed(requirement, "PROVIDER_CONTEXT_LIMIT",
+                        execution_host.context_limit_error, actions=execution_host.total_actions))
                 if (execution_host.control_blocked or
                         (execution_host.argument_repair or {}).get('phase') == 'sop_result'):
                     failure = repair_submission()

@@ -75,6 +75,21 @@ def _dump(obj: Any) -> dict[str, Any]:
     return {"raw": str(obj)}
 
 
+def _record_provider_error(host: Any, exc: Exception) -> str:
+    message = provider_error_message(exc)
+    host.model_error = message
+    lowered = message.lower()
+    if any(marker in lowered for marker in (
+        "max message tokens",
+        "context window",
+        "maximum context length",
+        "input exceeds",
+        "prompt is too long",
+    )):
+        host.context_limit_error = message
+    return message
+
+
 def _vision_messages(messages, payloads):
     """Project validated current-turn images through the existing protocol adapters only.
 
@@ -171,10 +186,10 @@ class ModelGateway:
             try:
                 completion = await loop_run(None, adapter.complete, wire)
             except Exception as exc:  # noqa: BLE001
-                act.host.model_error = provider_error_message(exc)
+                message = _record_provider_error(act.host, exc)
                 if trace:
-                    trace("llm_call_failed", {**span, "duration_ms": _ms(started), "error": provider_error_message(exc)})
-                return _error(502, "PROVIDER_ERROR", provider_error_message(exc))
+                    trace("llm_call_failed", {**span, "duration_ms": _ms(started), "error": message})
+                return _error(502, "PROVIDER_ERROR", message)
             data = _dump(completion)
             if trace:
                 trace("llm_call_finished", {**span, "duration_ms": _ms(started), "status": "success", **_usage(data.get("usage"))})
@@ -184,10 +199,10 @@ class ModelGateway:
         try:
             chunks: Iterator[Any] = await loop_run(None, adapter.stream, wire)
         except Exception as exc:  # noqa: BLE001
-            act.host.model_error = provider_error_message(exc)
+            message = _record_provider_error(act.host, exc)
             if trace:
-                trace("llm_call_failed", {**span, "duration_ms": _ms(started), "error": provider_error_message(exc)})
-            return _error(502, "PROVIDER_ERROR", provider_error_message(exc))
+                trace("llm_call_failed", {**span, "duration_ms": _ms(started), "error": message})
+            return _error(502, "PROVIDER_ERROR", message)
 
         async def body_iter() -> AsyncIterator[bytes]:
             usage: dict[str, Any] = {}
@@ -212,11 +227,11 @@ class ModelGateway:
                     trace("llm_call_finished", {**span, "duration_ms": _ms(started), "status": "success", "finish_reason": finish_reason, **_usage(usage)})
             except Exception as exc:  # noqa: BLE001
                 logger.exception("model gateway stream failed")
-                act.host.model_error = provider_error_message(exc)
+                message = _record_provider_error(act.host, exc)
                 if trace:
-                    trace("llm_call_failed", {**span, "duration_ms": _ms(started), "error": provider_error_message(exc)})
+                    trace("llm_call_failed", {**span, "duration_ms": _ms(started), "error": message})
                 # Mid-stream: the only thing the engine can act on is an error payload before [DONE]
-                yield f"data: {json.dumps({'error': {'code': 'PROVIDER_ERROR', 'message': provider_error_message(exc)}})}\n\n".encode()
+                yield f"data: {json.dumps({'error': {'code': 'PROVIDER_ERROR', 'message': message}})}\n\n".encode()
 
         return StreamingResponse(body_iter(), media_type="text/event-stream", headers={"cache-control": "no-cache", "x-accel-buffering": "no"})
 

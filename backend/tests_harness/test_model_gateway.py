@@ -121,6 +121,25 @@ def test_non_streaming_and_provider_failure():
     assert [e for e, _ in traces2] == ["llm_call_started", "llm_call_failed"]
 
 
+def test_context_limit_is_recorded_for_execution_to_stop_retrying():
+    class ContextLimitDriver(_Driver):
+        def complete(self, request):
+            raise RuntimeError("Total tokens of multi-modal content and text exceed max message tokens")
+
+    reg = ActivationRegistry()
+    act, traces = _activation(reg)
+    client = _app(reg, _Client(ContextLimitDriver([], [])))
+    response = client.post(
+        CHAT_COMPLETIONS_PATH,
+        json={"messages": [{"role": "user", "content": "hi"}], "stream": False},
+        headers={"authorization": f"Bearer {act.token}"},
+    )
+    assert response.status_code == 502
+    assert response.json()["error"]["code"] == "PROVIDER_ERROR"
+    assert "max message tokens" in act.host.context_limit_error
+    assert traces[-1][0] == "llm_call_failed"
+
+
 def test_anthropic_model_is_streamed_through_the_tool_aware_adapter():
     """A non-chat-completions ModelConfig is no longer refused: the adapter layer serves it."""
     events = [
