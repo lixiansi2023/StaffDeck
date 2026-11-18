@@ -6,6 +6,7 @@ import {
   reanchorSkillFlowConnection,
   skillNodeFlowPosition,
   withSkillNodeFlowPosition,
+  withoutSkillNodeFlowPositions,
   withoutSkillEdgeAt,
 } from './skillFlowModel';
 
@@ -44,6 +45,21 @@ describe('skill flow editor model', () => {
     expect(next.nodes[0].metadata).toMatchObject({ retained: true });
     expect(next.edges).toEqual(original.edges);
     expect(original.nodes[0].metadata).toEqual({ retained: true });
+  });
+
+  it('restores automatic layout without changing nodes or transitions', () => {
+    const original = fixture();
+    const moved = withSkillNodeFlowPosition(
+      withSkillNodeFlowPosition(original, 0, { x: 400, y: 300 }),
+      1,
+      { x: 900, y: 500 },
+    );
+    const arranged = withoutSkillNodeFlowPositions(moved);
+
+    expect(arranged.nodes.map((node) => skillNodeFlowPosition(node))).toEqual([null, null, null]);
+    expect(arranged.nodes[0].metadata).toEqual({ retained: true });
+    expect(arranged.edges).toEqual(original.edges);
+    expect(moved.nodes[0].metadata).toMatchObject({ retained: true, flow_position: { x: 400, y: 300 } });
   });
 
   it('removes only the selected transition', () => {

@@ -49,6 +49,17 @@ export function withSkillNodeFlowPosition(
   return next;
 }
 
+export function withoutSkillNodeFlowPositions(skill: SkillCard): SkillCard {
+  const next = cloneSkill(skill);
+  next.nodes = next.nodes.map((node) => {
+    const metadata = isRecord(node.metadata) ? { ...node.metadata } : {};
+    if (!(FLOW_POSITION_KEY in metadata)) return node;
+    delete metadata[FLOW_POSITION_KEY];
+    return { ...node, metadata };
+  });
+  return next;
+}
+
 export function withoutSkillEdgeAt(skill: SkillCard, edgeIndex: number): SkillCard {
   if (edgeIndex < 0 || edgeIndex >= skill.edges.length) return skill;
   const next = cloneSkill(skill);

@@ -22,7 +22,7 @@ import {
   UploadOutlined,
   WarningOutlined,
 } from '../icons';
-import { Copy, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from 'lucide-react';
+import { Copy, LayoutGrid, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from 'lucide-react';
 import {
   useEffect,
   useCallback,
@@ -305,6 +305,7 @@ import {
   reanchorSkillFlowConnection,
   skillNodeFlowPosition,
   withSkillNodeFlowPosition,
+  withoutSkillNodeFlowPositions,
   withoutSkillEdgeAt,
   type SkillFlowConnectionPreview,
   type SkillFlowPosition,
@@ -379,6 +380,8 @@ type ViewMode = 'source' | 'flow';
 type SelectOption = {
   value: string;
   label: string;
+  group?: string;
+  description?: string;
 };
 
 type CapabilityReferenceOption = SelectOption & {
@@ -435,6 +438,22 @@ const BASE_ACTION_OPTIONS: SelectOption[] = [
   { value: 'finish', label: '结束流程' },
   { value: 'stop', label: '停止流程' },
 ];
+
+const BUILTIN_FILE_ACTION_OPTIONS: SelectOption[] = [
+  { value: 'call_tool:read_file', label: '读取文本文件', description: '读取工作区中的 UTF-8 文本' },
+  { value: 'call_tool:extract_document_text', label: '提取文档内容', description: '将 PDF、DOCX 等受支持文档提取为文本' },
+  { value: 'call_tool:list_directory', label: '查看文件目录', description: '查看工作区目录中的文件' },
+  { value: 'call_tool:file_info', label: '查看文件信息', description: '查看文件类型、大小和校验信息' },
+  { value: 'call_tool:glob', label: '按名称查找文件', description: '按文件名模式查找工作区文件' },
+  { value: 'call_tool:grep', label: '搜索文件内容', description: '在文本文件中搜索指定内容' },
+];
+const BUILTIN_DELIVERY_ACTION_OPTIONS: SelectOption[] = [
+  { value: 'call_tool:publish_artifact', label: '发布可下载文件', description: '将已完成的文件发布为用户可下载的结果' },
+];
+const BUILTIN_ACTION_BY_VALUE = new Map(
+  [...BUILTIN_FILE_ACTION_OPTIONS, ...BUILTIN_DELIVERY_ACTION_OPTIONS]
+    .map((option) => [option.value, option]),
+);
 
 const CONDITION_PRESET_OPTIONS: SelectOption[] = [
   { value: '__always__', label: '总是可进入' },
@@ -3000,6 +3019,7 @@ function KDialog({
   onOpenChange,
   title,
   width = 520,
+  layer = 'default',
   footer,
   children,
 }: {
@@ -3007,13 +3027,22 @@ function KDialog({
   onOpenChange: (open: boolean) => void;
   title?: ReactNode;
   width?: number;
+  layer?: 'default' | 'fullscreen' | 'nested';
   footer?: ReactNode;
   children?: ReactNode;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-h-[85vh] gap-0 overflow-y-auto rounded-[16px] p-0"
+        className={cn(
+          'max-h-[85vh] gap-0 overflow-y-auto rounded-[16px] p-0',
+          layer === 'fullscreen' && 'z-[100]',
+          layer === 'nested' && 'z-[120]',
+        )}
+        overlayClassName={cn(
+          layer === 'fullscreen' && 'z-[90]',
+          layer === 'nested' && 'z-[110]',
+        )}
         style={{ width: `min(${width}px, calc(100vw - 32px))`, maxWidth: 'calc(100vw - 32px)' }}
       >
         {title != null && (
@@ -3198,7 +3227,8 @@ function ActionCombobox({
     ? options.filter(
         (option) =>
           option.label.toLowerCase().includes(normalizedQuery) ||
-          String(option.value).toLowerCase().includes(normalizedQuery),
+          String(option.value).toLowerCase().includes(normalizedQuery) ||
+          String(option.description || '').toLowerCase().includes(normalizedQuery),
       )
     : options;
   return (
@@ -3242,18 +3272,25 @@ function ActionCombobox({
         {filtered.length === 0 ? (
           <div className="px-[10px] py-[12px] text-center text-[13px] text-[#858b9c]">无匹配动作</div>
         ) : (
-          filtered.map((option) => (
-            <button
-              key={String(option.value)}
-              type="button"
-              className={cn(
-                'flex w-full items-center rounded-[8px] px-[10px] py-[6px] text-left text-[13px] text-foreground hover:bg-muted',
-                option.value === value && 'bg-muted',
+          filtered.map((option, index) => (
+            <div key={String(option.value)}>
+              {option.group && (index === 0 || filtered[index - 1].group !== option.group) && (
+                <div className="px-[10px] pb-[3px] pt-[8px] text-[11px] font-semibold text-muted-foreground">
+                  {option.group}
+                </div>
               )}
-              onClick={() => onSelect(String(option.value))}
-            >
-              {option.label}
-            </button>
+              <button
+                type="button"
+                className={cn(
+                  'flex w-full flex-col items-start rounded-[8px] px-[10px] py-[6px] text-left text-[13px] text-foreground hover:bg-muted',
+                  option.value === value && 'bg-muted',
+                )}
+                onClick={() => onSelect(String(option.value))}
+              >
+                <span>{option.label}</span>
+                {option.description && <span className="text-[11px] text-muted-foreground">{option.description}</span>}
+              </button>
+            </div>
           ))
         )}
       </PopoverContent>
@@ -3352,6 +3389,8 @@ function SkillSource({
     const next = cloneSkill(skill);
     const listValue = [
       'expected_user_info',
+      'result_inputs',
+      'result_outputs',
       'allowed_actions',
       'general_skill_ids',
       'tool_ids',
@@ -3481,6 +3520,8 @@ function SkillSource({
       optional: false,
       condition: '',
       expected_user_info: [],
+      result_inputs: [],
+      result_outputs: [],
       allowed_actions: ['continue_flow'],
       capability_refs: {
         general_skill_ids: [],
@@ -3796,13 +3837,18 @@ function SkillSource({
                     </EditableSourceField>
                   </div>
                   <div className={SOURCE_META_LIST_CLASS}>
-                    <EditableSourceTextLine label={fieldLabel('step_id')} value={stepId} onChange={(value) => editStep(index, 'step_id', value)} />
-                    <EditableSourceSelectLine
-                      label={fieldLabel('type')}
-                      value={String(step.type || 'collect_info')}
-                      options={NODE_TYPE_OPTIONS}
-                      onChange={(value) => editStep(index, 'type', value)}
-                    />
+                    <details className="min-w-0 rounded-[12px] border border-[#e4e8ee] bg-[#f8fafc] p-[10px]">
+                      <summary className="cursor-pointer text-[12px] font-semibold text-[#4b5563]">节点设置（高级）</summary>
+                      <div className={SOURCE_META_LIST_CLASS}>
+                        <EditableSourceTextLine label={fieldLabel('step_id')} value={stepId} onChange={(value) => editStep(index, 'step_id', value)} />
+                        <EditableSourceSelectLine
+                          label={fieldLabel('type')}
+                          value={String(step.type || 'collect_info')}
+                          options={NODE_TYPE_OPTIONS}
+                          onChange={(value) => editStep(index, 'type', value)}
+                        />
+                      </div>
+                    </details>
                     {isSubflow && (
                       <EditableSourceSelectLine
                         label="调用子 SOP"
@@ -3816,12 +3862,19 @@ function SkillSource({
                       <SourceReadonlyLine label="执行职责" value="仅进入所选子 SOP；父子流程共享当前 TaskFrame 字段。" />
                     ) : (
                       <>
-                        <EditableSourceTextLine label={fieldLabel('instruction')} value={String(step.instruction || '')} multiline collapsible onChange={(value) => editStep(index, 'instruction', value)} />
+                        <EditableSourceTextLine label={fieldLabel('instruction')} value={String(step.instruction || '')} multiline collapsible dialogEditor onChange={(value) => editStep(index, 'instruction', value)} />
+                        <details className="min-w-0 rounded-[12px] border border-[#e4e8ee] bg-[#f8fafc] p-[10px]">
+                          <summary className="cursor-pointer text-[12px] font-semibold text-[#4b5563]">运行配置（高级）</summary>
+                          <div className={SOURCE_META_LIST_CLASS}>
                         <EditableSourceListLine label={fieldLabel('expected_user_info')} values={asStringList(step.expected_user_info)} onChange={(value) => editStep(index, 'expected_user_info', value)} />
-                        <EditableSourceActionLine values={asStringList(step.allowed_actions)} options={filterActionOptionsForNodeType(actionOptions, String(step.type || ''))} toolDescriptions={toolDescriptions} toolStatuses={toolStatuses} onChange={(value) => editStep(index, 'allowed_actions', value)} />
+                        <EditableSourceListLine label={fieldLabel('result_inputs')} values={asStringList(step.result_inputs)} onChange={(value) => editStep(index, 'result_inputs', value)} />
+                        <EditableSourceListLine label={fieldLabel('result_outputs')} values={asStringList(step.result_outputs)} onChange={(value) => editStep(index, 'result_outputs', value)} />
+                        <EditableSourceActionLine values={asStringList(step.allowed_actions)} options={filterActionOptionsForNodeType(actionOptions, String(step.type || ''), terminalNodeIds.has(stepId))} toolDescriptions={toolDescriptions} toolStatuses={toolStatuses} onChange={(value) => editStep(index, 'allowed_actions', value)} />
                         <EditableCapabilityReferencesLine label="SOP 技能" values={asStringList(step.general_skill_ids)} requiredValues={asStringList(step.required_general_skill_ids)} options={generalSkillOptions} emptyText="未指定技能" onChange={(value) => editStep(index, 'general_skill_ids', value)} onRequiredChange={(value) => editStep(index, 'required_general_skill_ids', value)} />
                         <EditableCapabilityReferencesLine label="SOP 工具" values={asStringList(step.tool_ids)} requiredValues={asStringList(step.required_tool_ids)} options={toolOptions} emptyText="未指定工具" onChange={(value) => editStep(index, 'tool_ids', value)} onRequiredChange={(value) => editStep(index, 'required_tool_ids', value)} />
                         <EditableCapabilityReferencesLine label="SOP 知识库" values={asStringList(step.knowledge_base_ids)} requiredValues={asStringList(step.required_knowledge_base_ids)} options={knowledgeBaseOptions} emptyText="未指定知识库" onChange={(value) => editStep(index, 'knowledge_base_ids', value)} onRequiredChange={(value) => editStep(index, 'required_knowledge_base_ids', value)} />
+                          </div>
+                        </details>
                       </>
                     )}
                     {isHandoffNode && (
@@ -3923,6 +3976,7 @@ function SkillFlow({
   const [flowPan, setFlowPan] = useState({ x: 0, y: 0 });
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [selectedNodeIndex, setSelectedNodeIndex] = useState<number | null>(null);
+  const [nodeDetailsOpen, setNodeDetailsOpen] = useState(false);
   const [basicInspectorOpen, setBasicInspectorOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(true);
   const [flowViewportWidth, setFlowViewportWidth] = useState(0);
@@ -3982,7 +4036,11 @@ function SkillFlow({
   const selectedNodeType = selectedNodeIndex === null
     ? ''
     : String(nodes[selectedNodeIndex]?.type || '');
-  const inspectorActionOptions = filterActionOptionsForNodeType(actionOptions, selectedNodeType);
+  const inspectorActionOptions = filterActionOptionsForNodeType(
+    actionOptions,
+    selectedNodeType,
+    terminalSet.has(selectedNodeId),
+  );
   const generalSkillOptions: CapabilityReferenceOption[] = generalSkills.map((item) => ({
     value: item.id,
     label: item.name || item.slug,
@@ -4027,6 +4085,8 @@ function SkillFlow({
     const next = cloneSkill(skill);
     const listValue = [
       'expected_user_info',
+      'result_inputs',
+      'result_outputs',
       'allowed_actions',
       'general_skill_ids',
       'tool_ids',
@@ -4271,7 +4331,10 @@ function SkillFlow({
       container.scrollTop = Math.max(0, centerY * next - container.clientHeight / 2);
     });
   };
-  const fitFlowToViewport = (fullscreenMode = isFullscreen) => {
+  const fitFlowToViewport = (
+    fullscreenMode = isFullscreen,
+    layout = graphLayout,
+  ) => {
     const container = containerRef.current;
     if (!container) {
       updateZoom(0.64, 'fit');
@@ -4283,24 +4346,32 @@ function SkillFlow({
     const availableHeight = Math.max(240, container.clientHeight - verticalGutter);
     const nextZoom = Math.min(
       1,
-      availableWidth / graphLayout.width,
-      availableHeight / graphLayout.height,
+      availableWidth / layout.width,
+      availableHeight / layout.height,
     );
     const normalizedZoom = Math.min(1, Math.max(0.2, Math.round(nextZoom * 100) / 100));
     setFlowPreset('fit');
     setFlowZoom(normalizedZoom);
     if (fullscreenMode) {
       setFlowPan({
-        x: (container.clientWidth - graphLayout.width * normalizedZoom) / 2,
-        y: (container.clientHeight - graphLayout.height * normalizedZoom) / 2,
+        x: (container.clientWidth - layout.width * normalizedZoom) / 2,
+        y: (container.clientHeight - layout.height * normalizedZoom) / 2,
       });
       return;
     }
     window.requestAnimationFrame(() => {
-      const rootCenterX = (graphLayout.root.x + graphLayout.root.width / 2) * normalizedZoom;
+      const rootCenterX = (layout.root.x + layout.root.width / 2) * normalizedZoom;
       container.scrollLeft = Math.max(0, rootCenterX - container.clientWidth / 2);
       container.scrollTop = 0;
     });
+  };
+  const autoArrangeFlow = () => {
+    const next = withoutSkillNodeFlowPositions(skill);
+    const hasSavedPositions = nodes.some((node) => skillNodeFlowPosition(node) !== null);
+    setNodePositionOverrides({});
+    if (hasSavedPositions) onEdit(next, 'graph');
+    const nextLayout = buildSkillFlowCanvasLayout(next, skillGraphSteps(next), nodeNameMap);
+    window.requestAnimationFrame(() => fitFlowToViewport(isFullscreen, nextLayout));
   };
   const focusFlowStart = () => {
     const container = containerRef.current;
@@ -4503,6 +4574,7 @@ function SkillFlow({
   useEffect(() => {
     setNodePositionOverrides({});
     setSelectedEdgeId('');
+    setNodeDetailsOpen(false);
   }, [skill.skill_id]);
   useEffect(() => {
     const visibleEdgeIds = new Set(graphLayout.edges.map((edge) => edge.id));
@@ -4523,6 +4595,7 @@ function SkillFlow({
         return;
       }
       if (event.key !== 'Escape') return;
+      if (nodeDetailsOpen) return;
       event.preventDefault();
       if (connectionDrag) {
         connectionPointerRef.current = null;
@@ -4544,7 +4617,7 @@ function SkillFlow({
       document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [armedConnectionSourceId, connectionDrag, graphLayout.edges, isFullscreen, onFullscreenChange, selectedEdgeId]);
+  }, [armedConnectionSourceId, connectionDrag, graphLayout.edges, isFullscreen, nodeDetailsOpen, onFullscreenChange, selectedEdgeId]);
   useEffect(() => {
     const container = containerRef.current;
     if (!container || isFullscreen || centeredGraphKey.current === graphKey) return undefined;
@@ -4645,6 +4718,16 @@ function SkillFlow({
               onClick={() => updateZoom(1, '100')}
             >
               100%
+            </UIButton>
+            <UIButton
+              variant="outline"
+              size="sm"
+              className={CARD_OUTLINE_BUTTON_CLASS}
+              onClick={autoArrangeFlow}
+              aria-label="自动对齐排列节点"
+            >
+              <LayoutGrid />
+              自动排列
             </UIButton>
             <UIButton
               ref={fullscreenButtonRef}
@@ -4885,6 +4968,11 @@ function SkillFlow({
                     setBasicInspectorOpen(false);
                     setSelectedNodeIndex(item.index);
                   }}
+                  onOpenDetails={() => {
+                    setBasicInspectorOpen(false);
+                    setSelectedNodeIndex(item.index);
+                    setNodeDetailsOpen(true);
+                  }}
                   onToggle={onToggle}
                 />
               </div>
@@ -4901,6 +4989,7 @@ function SkillFlow({
           />
         ) : (
           <SkillFlowInspector
+            dialogLayer="fullscreen"
             node={selectedNode}
             nodeIndex={selectedNodeIndex}
             nodeId={selectedNodeId}
@@ -4944,6 +5033,37 @@ function SkillFlow({
           />
         </svg>
       )}
+      <KDialog
+        open={nodeDetailsOpen && selectedNode !== null}
+        onOpenChange={setNodeDetailsOpen}
+        title={selectedNode ? `节点详情 · ${String(selectedNode.name || selectedNodeId)}` : '节点详情'}
+        width={850}
+        layer="fullscreen"
+      >
+        <SkillFlowInspector
+          className="max-h-[65vh] w-full! min-w-0! border-0!"
+          dialogLayer="nested"
+          node={selectedNode}
+          nodeIndex={selectedNodeIndex}
+          nodeId={selectedNodeId}
+          nodes={nodes}
+          nodeOptions={nodeOptions}
+          outgoingEdges={selectedNodeId ? edgeMap[selectedNodeId] || [] : []}
+          terminal={selectedNodeId ? terminalSet.has(selectedNodeId) : false}
+          actionOptions={inspectorActionOptions}
+          toolDescriptions={toolDescriptions}
+          toolStatuses={toolStatuses}
+          generalSkillOptions={generalSkillOptions}
+          toolOptions={toolOptions}
+          knowledgeBaseOptions={knowledgeBaseOptions}
+          sopOptions={sopOptions}
+          tenantUserOptions={tenantUserOptions}
+          onEditNode={editFlowNode}
+          onAddEdge={addFlowEdge}
+          onUpdateEdge={updateFlowEdge}
+          onDeleteEdge={deleteFlowEdge}
+        />
+      </KDialog>
     </div>
   );
 }
@@ -5028,6 +5148,8 @@ function SkillFlowBasicInspector({
 }
 
 function SkillFlowInspector({
+  className,
+  dialogLayer,
   node,
   nodeIndex,
   nodeId,
@@ -5048,6 +5170,8 @@ function SkillFlowInspector({
   onUpdateEdge,
   onDeleteEdge,
 }: {
+  className?: string;
+  dialogLayer?: 'default' | 'fullscreen' | 'nested';
   node: Record<string, unknown> | null;
   nodeIndex: number | null;
   nodeId: string;
@@ -5070,7 +5194,7 @@ function SkillFlowInspector({
 }) {
   if (!node || nodeIndex === null) {
     return (
-      <aside className={FLOW_INSPECTOR_CLASS} aria-label="节点编辑器">
+      <aside className={cn(FLOW_INSPECTOR_CLASS, className)} aria-label="节点编辑器">
         <div className={FLOW_INSPECTOR_EMPTY_CLASS}>
           选择一个节点后，可在这里编辑对应的源码字段和流转规则。
         </div>
@@ -5086,7 +5210,7 @@ function SkillFlowInspector({
   // 回复/收集等其他节点一律不展示处理人与转人工动作。
   const isHandoffNode = String(node.type || '') === 'handoff';
   return (
-    <aside className={FLOW_INSPECTOR_CLASS} aria-label={`编辑节点 ${String(node.name || nodeId)}`}>
+    <aside className={cn(FLOW_INSPECTOR_CLASS, className)} aria-label={`编辑节点 ${String(node.name || nodeId)}`}>
       <div className={FLOW_INSPECTOR_HEADER_CLASS}>
         <div className="grid min-w-0 gap-[3px]">
           <strong className="truncate text-[14px] font-semibold text-[#18181a]">Node {nodeIndex + 1} · {String(node.name || nodeId)}</strong>
@@ -5096,10 +5220,15 @@ function SkillFlowInspector({
       </div>
       <div className={FLOW_INSPECTOR_BODY_CLASS}>
         <div className="grid min-w-0 gap-[12px]">
-          <FlowInspectorSection title="节点定义" description="节点名称、类型和执行目标会直接进入 TaskFrame。">
+          <FlowInspectorSection title="节点定义" description="填写节点名称和业务说明。">
             <EditableSourceTextLine label="节点名称" value={String(node.name || '')} onChange={(value) => onEditNode(nodeIndex, 'name', value)} />
-            <EditableSourceTextLine label={fieldLabel('step_id')} value={nodeId} onChange={(value) => onEditNode(nodeIndex, 'step_id', value)} />
-            <EditableSourceSelectLine label={fieldLabel('type')} value={String(node.type || 'collect_info')} options={NODE_TYPE_OPTIONS} onChange={(value) => onEditNode(nodeIndex, 'type', value)} />
+            <details className="min-w-0 rounded-[12px] border border-[#e4e8ee] bg-[#f8fafc] p-[10px]">
+              <summary className="cursor-pointer text-[12px] font-semibold text-[#4b5563]">节点设置（高级）</summary>
+              <div className={SOURCE_META_LIST_CLASS}>
+                <EditableSourceTextLine label={fieldLabel('step_id')} value={nodeId} onChange={(value) => onEditNode(nodeIndex, 'step_id', value)} />
+                <EditableSourceSelectLine label={fieldLabel('type')} value={String(node.type || 'collect_info')} options={NODE_TYPE_OPTIONS} onChange={(value) => onEditNode(nodeIndex, 'type', value)} />
+              </div>
+            </details>
             {String(node.type || '') === 'subflow' && (
               <EditableSourceSelectLine
                 label="调用子 SOP"
@@ -5112,7 +5241,7 @@ function SkillFlowInspector({
             {isSubflow ? (
               <SourceReadonlyLine label="执行职责" value="仅进入所选子 SOP；字段、动作和能力由子 SOP 自己定义。" />
             ) : (
-              <EditableSourceTextLine label={fieldLabel('instruction')} value={String(node.instruction || '')} multiline onChange={(value) => onEditNode(nodeIndex, 'instruction', value)} />
+              <EditableSourceTextLine label={fieldLabel('instruction')} value={String(node.instruction || '')} multiline dialogEditor dialogLayer={dialogLayer} onChange={(value) => onEditNode(nodeIndex, 'instruction', value)} />
             )}
             {isHandoffNode && (
               <EditableSourceSelectLine
@@ -5135,30 +5264,42 @@ function SkillFlowInspector({
             )}
           </FlowInspectorSection>
           {!isSubflow && (
-            <>
-              <FlowInspectorSection title="输入与允许动作" description="明确本节点需要收集的字段，以及模型可以自主选择的动作。">
+            <details className="min-w-0 rounded-[16px] border border-[#e4e8ee] bg-[#f8fafc] p-[12px]">
+              <summary className="cursor-pointer text-[13px] font-semibold text-[#4b5563]">运行配置（高级）</summary>
+              <div className="mt-[12px] grid min-w-0 gap-[12px]">
+              <FlowInspectorSection title="输入与允许动作" description="期望字段用于向用户收集信息，例如申请编号；允许动作限定本节点可执行的操作。">
                 <EditableSourceListLine label={fieldLabel('expected_user_info')} values={asStringList(node.expected_user_info)} onChange={(value) => onEditNode(nodeIndex, 'expected_user_info', value)} />
                 <EditableSourceActionLine values={asStringList(node.allowed_actions)} options={actionOptions} toolDescriptions={toolDescriptions} toolStatuses={toolStatuses} onChange={(value) => onEditNode(nodeIndex, 'allowed_actions', value)} />
+              </FlowInspectorSection>
+              <FlowInspectorSection title="步骤结果（内部配置）" description="读取前序节点保存的结果，并指定本节点要保存的结果；这些名称不会写入节点说明。">
+                <EditableSourceListLine label={fieldLabel('result_inputs')} values={asStringList(node.result_inputs)} onChange={(value) => onEditNode(nodeIndex, 'result_inputs', value)} />
+                <EditableSourceListLine label={fieldLabel('result_outputs')} values={asStringList(node.result_outputs)} onChange={(value) => onEditNode(nodeIndex, 'result_outputs', value)} />
               </FlowInspectorSection>
               <FlowInspectorSection title="节点专用能力" description="SOP-specific 能力只有在这里明确引用后，才会进入当前节点的 Harness 能力清单。">
                 <EditableCapabilityReferencesLine label="SOP 技能" values={asStringList(node.general_skill_ids)} requiredValues={asStringList(node.required_general_skill_ids)} options={generalSkillOptions} emptyText="未指定技能" onChange={(value) => onEditNode(nodeIndex, 'general_skill_ids', value)} onRequiredChange={(value) => onEditNode(nodeIndex, 'required_general_skill_ids', value)} />
                 <EditableCapabilityReferencesLine label="SOP 工具" values={asStringList(node.tool_ids)} requiredValues={asStringList(node.required_tool_ids)} options={toolOptions} emptyText="未指定工具" onChange={(value) => onEditNode(nodeIndex, 'tool_ids', value)} onRequiredChange={(value) => onEditNode(nodeIndex, 'required_tool_ids', value)} />
                 <EditableCapabilityReferencesLine label="SOP 知识库" values={asStringList(node.knowledge_base_ids)} requiredValues={asStringList(node.required_knowledge_base_ids)} options={knowledgeBaseOptions} emptyText="未指定知识库" onChange={(value) => onEditNode(nodeIndex, 'knowledge_base_ids', value)} onRequiredChange={(value) => onEditNode(nodeIndex, 'required_knowledge_base_ids', value)} />
               </FlowInspectorSection>
-            </>
+              </div>
+            </details>
           )}
+          <details className="min-w-0 rounded-[16px] border border-[#e4e8ee] bg-[#f8fafc] p-[12px]">
+            <summary className="cursor-pointer text-[13px] font-semibold text-[#4b5563]">流转与失败处理（高级）</summary>
+            <div className="mt-[12px]">
           <FlowInspectorSection title="流转与失败处理" description="按优先级判断规则；未命中时使用重试策略或终止流程。">
             <EditableFlowRulesLine sourceNodeId={nodeId} edges={outgoingEdges} nodes={nodes} nodeOptions={nodeOptions} terminal={terminal} onAdd={() => onAddEdge(nodeIndex)} onUpdate={(edgeIndex, patch) => onUpdateEdge(nodeIndex, edgeIndex, patch)} onDelete={(edgeIndex) => onDeleteEdge(nodeIndex, edgeIndex)} />
             {!isSubflow && <SourceJsonLine label="知识范围" value={node.knowledge_scope} />}
             {!isSubflow && <EditableRetryPolicyLine value={node.retry_policy} onChange={(value) => onEditNode(nodeIndex, 'retry_policy', value)} />}
           </FlowInspectorSection>
+            </div>
+          </details>
         </div>
       </div>
     </aside>
   );
 }
 
-function SkillFlowNodeCard({
+export function SkillFlowNodeCard({
   index,
   step,
   terminal,
@@ -5175,6 +5316,7 @@ function SkillFlowNodeCard({
   onConnectClick,
   onConnectStart,
   onSelect,
+  onOpenDetails,
   onToggle,
 }: {
   index: number;
@@ -5193,6 +5335,7 @@ function SkillFlowNodeCard({
   onConnectClick: (event: MouseEvent<HTMLButtonElement>, sourceNodeId: string) => void;
   onConnectStart: (event: ReactPointerEvent<HTMLButtonElement>, sourceNodeId: string) => void;
   onSelect: () => void;
+  onOpenDetails: () => void;
   onToggle: (target: TargetSelection) => void;
 }) {
   const nodeId = String(step.node_id || step.step_id || `node_${index + 1}`);
@@ -5236,6 +5379,18 @@ function SkillFlowNodeCard({
           <p className={FLOW_NODE_SUMMARY_CLASS}>{previewNodeInstruction(step.instruction)}</p>
         </div>
       </SelectableTarget>
+      <button
+        type="button"
+        className="absolute top-[10px] right-[10px] z-[2] rounded-[6px] border border-[#d6e5e2] bg-white px-[7px] py-[3px] text-[11px] text-[#04756f] hover:bg-[#edf8f5] focus-visible:outline-2 focus-visible:outline-[#04756f]"
+        aria-label={`展开节点 ${index + 1} 详情`}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.stopPropagation();
+          onOpenDetails();
+        }}
+      >
+        展开
+      </button>
       {showConnectHandle && (
         <button
           type="button"
@@ -5286,7 +5441,7 @@ function PlainChipList({ values }: { values: unknown }) {
   );
 }
 
-function skillGraphSteps(skill: SkillCard): Array<Record<string, unknown>> {
+export function skillGraphSteps(skill: SkillCard): Array<Record<string, unknown>> {
   if (Array.isArray(skill.nodes) && skill.nodes.length > 0) {
     return skill.nodes.map((node, index) => {
       const capabilityRefs = nodeCapabilityRefs(node);
@@ -5299,6 +5454,8 @@ function skillGraphSteps(skill: SkillCard): Array<Record<string, unknown>> {
         optional: Boolean(node.optional),
         condition: node.condition || '',
         expected_user_info: asStringList(node.expected_user_info),
+        result_inputs: asStringList(node.result_inputs),
+        result_outputs: asStringList(node.result_outputs),
         allowed_actions: asStringList(node.allowed_actions),
         general_skill_ids: capabilityRefs.general_skill_ids,
         tool_ids: capabilityRefs.tool_ids,
@@ -6149,11 +6306,13 @@ function EditableSourceStepHeading({
   );
 }
 
-function EditableSourceTextLine({
+export function EditableSourceTextLine({
   label,
   value,
   multiline = false,
   collapsible = false,
+  dialogEditor = false,
+  dialogLayer = 'default',
   readOnly = false,
   onChange,
 }: {
@@ -6161,12 +6320,16 @@ function EditableSourceTextLine({
   value: string;
   multiline?: boolean;
   collapsible?: boolean;
+  dialogEditor?: boolean;
+  dialogLayer?: 'default' | 'fullscreen' | 'nested';
   readOnly?: boolean;
   onChange: (value: string) => void;
 }) {
   const canCollapse = collapsible && multiline;
   const shouldStartCollapsed = canCollapse && value.trim().length > 90;
   const [collapsed, setCollapsed] = useState(shouldStartCollapsed);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [draftValue, setDraftValue] = useState(value);
 
   useEffect(() => {
     if (!canCollapse || value.trim().length <= 90) {
@@ -6174,12 +6337,31 @@ function EditableSourceTextLine({
     }
   }, [canCollapse, value]);
 
+  const openEditor = () => {
+    setDraftValue(value);
+    setEditorOpen(true);
+  };
+
   return (
+    <>
     <div className={cn(SOURCE_LINE_CLASS, canCollapse && "collapsible")}>
       <span className={SOURCE_KEY_CLASS}>{label}</span>
       <span className={SOURCE_VALUE_CLASS}>
         <EditableSourceField>
-          {canCollapse ? (
+          {dialogEditor && multiline ? (
+            <button
+              type="button"
+              className={SOURCE_COLLAPSIBLE_HEAD_CLASS}
+              aria-label={`展开${label}`}
+              onClick={openEditor}
+            >
+              <span className={SOURCE_COLLAPSIBLE_PREVIEW_CLASS}>{previewSourceText(value)}</span>
+              <span className={SOURCE_COLLAPSIBLE_TOGGLE_CLASS}>
+                <RightOutlined />
+                展开
+              </span>
+            </button>
+          ) : canCollapse ? (
             <div className={SOURCE_COLLAPSIBLE_EDITOR_CLASS}>
               <button
                 type="button"
@@ -6232,6 +6414,37 @@ function EditableSourceTextLine({
         </EditableSourceField>
       </span>
     </div>
+    {dialogEditor && multiline && (
+      <KDialog
+        open={editorOpen}
+        onOpenChange={setEditorOpen}
+        title={`${readOnly ? '查看' : '编辑'}${label}`}
+        width={900}
+        layer={dialogLayer}
+        footer={(
+          <>
+            <UIButton variant="outline" onClick={() => setEditorOpen(false)}>{readOnly ? '关闭' : '取消'}</UIButton>
+            {!readOnly && (
+              <UIButton onClick={() => {
+                onChange(draftValue);
+                setEditorOpen(false);
+              }}>
+                应用到草稿
+              </UIButton>
+            )}
+          </>
+        )}
+      >
+        <Textarea
+          aria-label={`${label}完整内容`}
+          className="min-h-[50vh] w-full resize-y whitespace-pre-wrap font-mono text-[13px] leading-[1.6]"
+          value={draftValue}
+          readOnly={readOnly}
+          onChange={(event) => setDraftValue(event.target.value)}
+        />
+      </KDialog>
+    )}
+    </>
   );
 }
 
@@ -6506,7 +6719,7 @@ function hasReadableSourceObject(value: unknown): boolean {
   return Object.keys(value).length > 0;
 }
 
-function EditableSourceActionLine({
+export function EditableSourceActionLine({
   values,
   options,
   toolDescriptions,
@@ -7083,8 +7296,9 @@ function ActionChip({
   editable?: boolean;
 }) {
   const toolName = toolNameFromAction(action);
-  const description = toolName ? toolDescriptions[toolName] || '当前工具配置中暂无描述' : '';
-  const status = toolName ? toolStatuses[toolName] || 'incomplete' : '';
+  const builtin = BUILTIN_ACTION_BY_VALUE.get(action);
+  const description = builtin?.description || (toolName ? toolDescriptions[toolName] || '当前工具配置中暂无描述' : '');
+  const status = builtin ? 'existing' : toolName ? toolStatuses[toolName] || 'incomplete' : '';
   const variant = className.includes('removed')
     ? 'removed'
     : className.includes('added')
@@ -7335,6 +7549,8 @@ function parseNodeFragment(fragment: string, index: number): Record<string, unkn
   const assigneeUserId = extractJsonStringField(fragment, 'assignee_user_id') || '';
   const assigneeNotifyChannel = extractJsonStringField(fragment, 'assignee_notify_channel') || '';
   const expectedUserInfo = extractJsonStringArrayField(fragment, 'expected_user_info') || [];
+  const resultInputs = extractJsonStringArrayField(fragment, 'result_inputs') || [];
+  const resultOutputs = extractJsonStringArrayField(fragment, 'result_outputs') || [];
   const allowedActions = extractJsonStringArrayField(fragment, 'allowed_actions') || [];
   const generalSkillIds = extractJsonStringArrayField(fragment, 'general_skill_ids') || [];
   const toolIds = extractJsonStringArrayField(fragment, 'tool_ids') || [];
@@ -7347,6 +7563,8 @@ function parseNodeFragment(fragment: string, index: number): Record<string, unkn
     && !name
     && !instruction
     && expectedUserInfo.length === 0
+    && resultInputs.length === 0
+    && resultOutputs.length === 0
     && allowedActions.length === 0
     && generalSkillIds.length === 0
     && toolIds.length === 0
@@ -7363,6 +7581,8 @@ function parseNodeFragment(fragment: string, index: number): Record<string, unkn
     condition,
     sub_sop_id: subSopId,
     expected_user_info: expectedUserInfo,
+    result_inputs: resultInputs,
+    result_outputs: resultOutputs,
     allowed_actions: allowedActions,
     capability_refs: {
       general_skill_ids: generalSkillIds,
@@ -7393,6 +7613,8 @@ function normalizeNodePreview(node: Record<string, unknown>, index = 0): Record<
     optional: Boolean(node.optional),
     condition: stringValue(node.condition, ''),
     expected_user_info: asStringList(node.expected_user_info),
+    result_inputs: asStringList(node.result_inputs),
+    result_outputs: asStringList(node.result_outputs),
     allowed_actions: asStringList(node.allowed_actions),
     capability_refs: capabilityRefs,
     knowledge_scope: isRecord(node.knowledge_scope) ? node.knowledge_scope : {},
@@ -7617,10 +7839,16 @@ export function applyNodeTypeChange(
   return node;
 }
 
-export function filterActionOptionsForNodeType(options: SelectOption[], type: string): SelectOption[] {
+export function filterActionOptionsForNodeType(
+  options: SelectOption[],
+  type: string,
+  terminal = false,
+): SelectOption[] {
   // 转人工动作只允许出现在 handoff 节点上
-  if (String(type || '') === 'handoff') return options;
-  return options.filter((option) => option.value !== 'handoff_human');
+  return options.filter((option) => (
+    (type === 'handoff' || option.value !== 'handoff_human')
+    && (type === 'response' && terminal || option.value !== 'call_tool:publish_artifact')
+  ));
 }
 
 function hasSelectedText(): boolean {
@@ -7943,6 +8171,8 @@ function normalizeSubflowNode<T extends Record<string, unknown>>(node: T): T {
     ...node,
     instruction: '',
     expected_user_info: [],
+    result_inputs: [],
+    result_outputs: [],
     allowed_actions: [],
     capability_refs: {
       general_skill_ids: [],
@@ -8112,6 +8342,8 @@ function blankSkillForAnimation(skill: SkillCard): SkillCard {
     optional: Boolean(step.optional),
     condition: '',
     expected_user_info: [],
+    result_inputs: [],
+    result_outputs: [],
     allowed_actions: [],
     capability_refs: {
       general_skill_ids: [],
@@ -8206,6 +8438,8 @@ function collectTextDiffs(previousDraft: SkillCard, nextDraft: SkillCard, change
       'name',
       'instruction',
       'expected_user_info',
+      'result_inputs',
+      'result_outputs',
       'allowed_actions',
       'general_skill_ids',
       'tool_ids',
@@ -8283,6 +8517,8 @@ function isListField(field: string): boolean {
     'required_info',
     'response_rules',
     'expected_user_info',
+    'result_inputs',
+    'result_outputs',
     'allowed_actions',
     'general_skill_ids',
     'tool_ids',
@@ -8420,6 +8656,8 @@ function fieldLabel(field: string): string {
     condition: '条件',
     instruction: '节点说明',
     expected_user_info: '期望字段',
+    result_inputs: '读取已有结果',
+    result_outputs: '保存本步结果',
     allowed_actions: '允许动作',
     general_skill_ids: 'SOP 技能',
     tool_ids: 'SOP 工具',
@@ -8434,12 +8672,14 @@ function toolNameFromAction(action: string): string {
 }
 
 function actionLabel(action: string): string {
+  const builtin = BUILTIN_ACTION_BY_VALUE.get(action);
+  if (builtin) return `内置能力：${builtin.label}`;
   const toolName = toolNameFromAction(action);
   if (toolName) return `调用工具：${toolName}`;
   return BASE_ACTION_OPTIONS.find((item) => item.value === action)?.label || action;
 }
 
-function buildActionOptions(
+export function buildActionOptions(
   toolDescriptions: ToolDescriptionMap,
   toolStatuses: ToolStatusMap,
   steps: Array<Record<string, unknown>>,
@@ -8447,16 +8687,24 @@ function buildActionOptions(
   const toolNames = Array.from(new Set([
     ...Object.keys(toolDescriptions),
     ...Object.keys(toolStatuses),
-  ])).filter(Boolean).sort((a, b) => a.localeCompare(b));
+  ])).filter((name) => name && !BUILTIN_ACTION_BY_VALUE.has(`call_tool:${name}`))
+    .sort((a, b) => a.localeCompare(b));
   const toolOptions = toolNames.map((toolName) => ({
     value: `call_tool:${toolName}`,
     label: `调用工具：${toolName}`,
+    group: '业务工具',
   }));
   const currentActionOptions = steps
     .flatMap((step) => asStringList(step.allowed_actions))
     .filter(Boolean)
-    .map((action) => ({ value: action, label: actionLabel(action) }));
-  return mergeSelectOptions(BASE_ACTION_OPTIONS, toolOptions, currentActionOptions);
+    .map((action) => ({ value: action, label: actionLabel(action), group: '已有动作' }));
+  return mergeSelectOptions(
+    BASE_ACTION_OPTIONS.map((option) => ({ ...option, group: '流程动作' })),
+    BUILTIN_FILE_ACTION_OPTIONS.map((option) => ({ ...option, group: '内置文件能力' })),
+    BUILTIN_DELIVERY_ACTION_OPTIONS.map((option) => ({ ...option, group: '内置交付能力' })),
+    toolOptions,
+    currentActionOptions,
+  );
 }
 
 function mergeSelectOptions(...groups: SelectOption[][]): SelectOption[] {

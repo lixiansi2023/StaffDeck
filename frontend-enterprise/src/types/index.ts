@@ -11,6 +11,10 @@ export type SkillCapabilityRefs = {
 
 export type SkillGraphNode = Record<string, unknown> & {
   capability_refs?: SkillCapabilityRefs;
+  /** 从前序节点保存的结果中读取的内部字段。 */
+  result_inputs?: string[];
+  /** 当前节点必须写入的内部结果字段。 */
+  result_outputs?: string[];
   sub_sop_id?: string | null;
   /** 人工节点指定处理人（handoff / handoff_human 节点）。 */
   assignee_user_id?: string | null;
