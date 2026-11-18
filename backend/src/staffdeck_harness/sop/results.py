@@ -40,6 +40,19 @@ def enforce_required_slots(
     missing = missing_step_slots(requirement, result.slot_updates, session.slots_json or {})
     if not missing:
         return result
+    missing_outputs = [
+        field for field in missing if field in getattr(requirement, "result_outputs", ())
+    ]
+    if missing_outputs:
+        result.status = "failed"
+        result.reply_fragment = "当前步骤结果未完整生成，请重试。"
+        result.error = {
+            "code": "RESULT_OUTPUT_MISSING",
+            "message": result.reply_fragment,
+            "details": {"missing_outputs": missing_outputs},
+        }
+        result.next_step_id = None
+        return result
     result.status = "awaiting_user"
     # Do not retain a model's "submitted/completed" claim after rejecting the completion.
     result.reply_fragment = "当前步骤尚未完成，还需要您补充：" + "、".join(missing) + "。"

@@ -23,7 +23,11 @@ def slot_is_filled(value: Any) -> bool:
 def missing_step_slots(requirement, updates, known=None) -> list[str]:
     fields = getattr(requirement, "expected_slots", None) or requirement.required_slots
     values = {**dict(requirement.known_slots if known is None else known), **dict(updates or {})}
-    return [field for field in fields if not slot_is_filled(values.get(field))]
+    missing = [field for field in fields if not slot_is_filled(values.get(field))]
+    for field in getattr(requirement, "result_outputs", ()):
+        if not slot_is_filled(dict(updates or {}).get(field)) and field not in missing:
+            missing.append(field)
+    return missing
 
 
 def strip_router_generated_message_slots(slots: Mapping[str, Any] | None) -> dict[str, Any]:

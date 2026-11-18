@@ -19,6 +19,7 @@ def test_initial_prompt_teaches_actual_system_tools_before_user_input():
     assert "mcp__staffdeck__capability_search" not in guide
     assert "capabilities" not in guide.split("## 可调用接口")[1].split("## 报错后的处理")[0]
     assert '"tool_id"' in guide and '"resource_id"' in guide
+    assert '"tool":"read_file","arguments":{"path":' in guide
     assert "不会扩大授权" in guide and "不重新提交" in guide
     prompt = _step_prompt(TaskRequirement(task_frame_id="t", kind="conversation", goal="test",
         current_user_message="USER-MARKER"), PipelineState(CompositionCompiler(hooks=()).compile(_staff())), [], "", system_tools=names)

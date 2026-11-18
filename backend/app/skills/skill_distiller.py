@@ -29,6 +29,10 @@ MODEL_TOOL_LIMIT = 48
 MODEL_TOOL_CATALOG_CHAR_LIMIT = 12000
 MODEL_TOOL_DESCRIPTION_CHAR_LIMIT = 240
 MODEL_TOOL_PARAMETER_LIMIT = 12
+SANDBOX_FILE_TOOLS = frozenset({
+    "read_file", "extract_document_text", "list_directory", "glob", "grep", "file_info",
+})
+LEGACY_READ_FILE_NAMES = frozenset({"read_file_content", "file.read_file_content"})
 CLOSED_LOOP_RESPONSE_RULE = (
     "流程必须形成闭环：不得把“请稍候/正在处理/稍后反馈”作为最终回复；"
     "需要外部事实、外部状态或外部副作用时必须调用已配置工具或转人工，并向用户给出明确结果。"
@@ -42,8 +46,8 @@ CONFIRMATION_FLOW_RESPONSE_RULE = (
     "调用工具或执行处理前必须先让用户确认关键对象、范围和操作内容。"
 )
 TOOL_STEP_INSTRUCTION_SUFFIX = (
-    "工具参数满足时直接调用工具；工具成功后必须基于工具结果进入最终回复，"
-    "不要停留在“请稍候”或“正在处理”。"
+    "工具参数满足时直接调用工具；完成后根据结果继续当前流程，"
+    "失败时说明原因，不要停留在“请稍候”或“正在处理”。"
 )
 ADAPTIVE_STEP_INSTRUCTION_SUFFIX = (
     "将本步骤作为目标而不是固定话术；如果用户当前消息、历史 slots 或路由意图已满足本步骤，"
@@ -318,6 +322,10 @@ class SkillDistiller:
 
         required_info = _string_list(draft.get("required_info"), fallback.required_info)
         nodes = self._normalize_nodes(draft.get("nodes"), fallback.nodes)
+        required_info, nodes, attachment_warnings, moved_fields = _repair_attachment_collection(
+            required_info, nodes
+        )
+        warnings.extend(attachment_warnings)
         nodes, node_warnings = self._ensure_closed_loop_nodes(nodes, request)
         warnings.extend(node_warnings)
         nodes, unique_node_warnings = ensure_unique_node_ids(nodes)
@@ -386,6 +394,7 @@ class SkillDistiller:
                 required_info,
                 nodes,
                 fallback.slot_filling_policy,
+                excluded_fields=moved_fields,
             ),
             "response_rules": response_rules,
             "nodes": nodes,
@@ -479,6 +488,8 @@ class SkillDistiller:
                     "expected_user_info": _string_list(
                         item.get("expected_user_info"), fallback.expected_user_info
                     ),
+                    "result_inputs": _string_list(item.get("result_inputs"), []),
+                    "result_outputs": _string_list(item.get("result_outputs"), []),
                     "allowed_actions": _normalize_actions(
                         _string_list(item.get("allowed_actions"), fallback.allowed_actions)
                     ),
@@ -615,6 +626,80 @@ class SkillDistiller:
                 "user_wants_human": "直接转人工。",
             },
         )
+
+
+def _repair_attachment_collection(
+    required_info: list[str], nodes: list[dict[str, Any]]
+) -> tuple[list[str], list[dict[str, Any]], list[str], set[str]]:
+    """Keep document-derived fields out of the up-front user collection gate."""
+    if not any(
+        "call_tool:read_file" in node.get("allowed_actions", [])
+        or "call_tool:extract_document_text" in node.get("allowed_actions", [])
+        for node in nodes
+    ):
+        return required_info, nodes, [], set()
+    collector = next((node for node in nodes if node.get("type") == "collect_info"), None)
+    if collector is None:
+        return required_info, nodes, [], set()
+    expected = list(collector.get("expected_user_info") or [])
+    file_fields = [field for field in expected if field.endswith("_file_path")]
+    if not file_fields:
+        return required_info, nodes, [], set()
+    derived_fields = set(file_fields) | {"request_id", "form_code", "project_name"}
+    collector["expected_user_info"] = [field for field in expected if field not in derived_fields]
+    collector["result_outputs"] = list(dict.fromkeys([
+        *collector.get("result_outputs", []), *file_fields,
+    ]))
+    collector["instruction"] = (
+        "识别本次上传附件的业务角色，保存各文件的路径引用，不保存材料正文。"
+        "已上传的文件无需用户复述路径；缺少必要附件或无法识别角色时，"
+        "请用户补充文件或说明。"
+        + (
+            "另向用户收集：" + "、".join(collector["expected_user_info"]) + "。"
+            if collector["expected_user_info"] else ""
+        )
+    )
+    file_actions = ("call_tool:read_file", "call_tool:extract_document_text")
+    for node in nodes:
+        if node is not collector and not any(
+            action in node.get("allowed_actions", []) for action in file_actions
+        ):
+            continue
+        actions = list(node.get("allowed_actions", []))
+        node["allowed_actions"] = list(dict.fromkeys([*actions, *file_actions]))
+        node["instruction"] += (
+            "按上传文件的实际格式读取；无法解析或提取内容为空时，"
+            "说明原因并请求可读取材料，不猜测文件内容。"
+        )
+    for node in nodes:
+        if node is collector or not any(
+            action in node.get("allowed_actions", [])
+            for action in file_actions
+        ):
+            continue
+        mentioned = [field for field in file_fields if field in node.get("instruction", "")]
+        if mentioned:
+            node["result_inputs"] = list(dict.fromkeys([
+                *node.get("result_inputs", []), *mentioned,
+            ]))
+    first_reader = next((node for node in nodes if node is not collector and any(
+        action in node.get("allowed_actions", [])
+        for action in file_actions
+    )), None)
+    if first_reader is not None and derived_fields & {
+        "request_id", "form_code", "project_name",
+    }:
+        first_reader["instruction"] += (
+            "从文件正文提取实际载明的申请编号、表单代码和项目名称；"
+            "未载明的字段不得编造，只有后续操作确实需要时才请用户补充。"
+        )
+    required_info = [field for field in required_info if field not in derived_fields]
+    warning = (
+        "已将附件路径和表单内可提取的标识移出首节点用户必填项；"
+        "请核对读取表单后提取 request_id、form_code、project_name，"
+        "确实缺失且后续必需时再追问。"
+    )
+    return required_info, nodes, [warning], derived_fields
 
 
 def _steps_have_tool_action(steps: list[dict[str, Any]]) -> bool:
@@ -1099,6 +1184,8 @@ def _slot_filling_policy(
     required_info: list[str],
     steps: list[dict[str, Any]],
     fallback_policy: dict[str, Any],
+    *,
+    excluded_fields: set[str] | None = None,
 ) -> dict[str, Any]:
     has_explicit_policy = isinstance(value, dict)
     if has_explicit_policy:
@@ -1110,6 +1197,7 @@ def _slot_filling_policy(
         expected_infos.update(str(field) for field in step.get("expected_user_info", []))
     if has_explicit_policy and isinstance(policy.get("target_info"), list):
         expected_infos.update(str(field) for field in policy["target_info"] if str(field).strip())
+    expected_infos.difference_update(excluded_fields or set())
     default_policy = _default_slot_filling_policy(sorted(expected_infos))
     return {
         **default_policy,
@@ -1332,7 +1420,51 @@ def _normalize_node_capability_refs(
                     target_refs = normalized_nodes[index]["capability_refs"]
                     if capability_id not in target_refs[required_field]:
                         target_refs[required_field].append(capability_id)
+    rule_families = set(re.findall(
+        r"\b([A-Z]{2,5})-R\d{2}\b",
+        " ".join([
+            request.raw_content,
+            *(str(node.get("instruction") or "") for node in normalized_nodes),
+        ]),
+    ))
+    if rule_families:
+        kb_by_id = {
+            str(kb.get("id") or ""): kb for kb in request.available_knowledge_bases
+        }
+        for node in normalized_nodes:
+            refs = node["capability_refs"]
+            unrelated = [
+                kb_id for kb_id in refs["knowledge_base_ids"]
+                if _knowledge_base_rule_family_mismatch(kb_by_id.get(kb_id, {}), rule_families)
+            ]
+            if not unrelated:
+                continue
+            refs["knowledge_base_ids"] = [
+                kb_id for kb_id in refs["knowledge_base_ids"] if kb_id not in unrelated
+            ]
+            refs["required_knowledge_base_ids"] = [
+                kb_id for kb_id in refs["required_knowledge_base_ids"]
+                if kb_id not in unrelated
+            ]
+            warnings.append(
+                f"节点「{node.get('name') or node.get('node_id')}」引用了不同规则系列的知识库，"
+                "已移除；请提供与当前流程匹配的规则依据。"
+            )
     return normalized_nodes, warnings
+
+
+def _knowledge_base_rule_family_mismatch(
+    knowledge_base: dict[str, Any], rule_families: set[str]
+) -> bool:
+    description = " ".join(str(knowledge_base.get(key) or "") for key in ("name", "description"))
+    kb_rule_families = set(re.findall(r"\b([A-Z]{2,5})-R\d{2}\b", description))
+    if kb_rule_families:
+        return kb_rule_families.isdisjoint(rule_families)
+    form_codes = set(re.findall(r"\b[A-Z]{1,4}\d{2}\b", description))
+    return bool(form_codes) and all(
+        not any(code.startswith(family) for family in rule_families)
+        for code in form_codes
+    )
 
 
 def _explicit_capability_mentions(
@@ -1444,17 +1576,32 @@ def _remove_unknown_tool_actions(
     for step in steps:
         next_step = dict(step)
         actions = []
+        instruction = str(next_step.get("instruction") or "")
+        if next_step.get("type") != "subflow":
+            instruction = re.sub(
+                r"(?<![\w.])(?:file\.)?read_file_content\b",
+                lambda match: match.group() if match.group() in available_names else "read_file",
+                instruction,
+            )
+            next_step["instruction"] = instruction
         for action in next_step.get("allowed_actions", []):
             action_text = str(action)
             if not action_text.startswith("call_tool:"):
                 actions.append(action_text)
                 continue
             tool_name = action_text.replace("call_tool:", "", 1).strip()
-            if tool_name in available_names or tool_name in retained_names:
-                actions.append(action_text)
+            if tool_name in LEGACY_READ_FILE_NAMES and tool_name not in available_names:
+                tool_name = "read_file"
+            if tool_name in available_names or tool_name in retained_names or tool_name in SANDBOX_FILE_TOOLS:
+                normalized_action = f"call_tool:{tool_name}"
+                if normalized_action not in actions:
+                    actions.append(normalized_action)
                 continue
             if tool_name and tool_name not in missing_names:
                 missing_names.append(tool_name)
+        if (next_step.get("type") != "subflow" and re.search(r"\bread_file\b", instruction)
+                and "call_tool:read_file" not in actions):
+            actions.append("call_tool:read_file")
         next_step["allowed_actions"] = actions
         normalized_steps.append(next_step)
     return normalized_steps, missing_names
@@ -1481,6 +1628,10 @@ def _normalize_tool_suggestions(
     if isinstance(value, list):
         for item in value:
             if not isinstance(item, dict):
+                continue
+            mention_name = str(item.get("name") or item.get("inferred_name") or "").strip()
+            if (mention_name in LEGACY_READ_FILE_NAMES | SANDBOX_FILE_TOOLS
+                    and mention_name not in _available_tool_names(request.available_tools)):
                 continue
             suggestion = _tool_mention_to_resolution(item, request)
             if suggestion is None:

@@ -47,6 +47,8 @@ class SkillGraphNode(BaseModel):
     optional: bool = False
     condition: Optional[str] = None
     expected_user_info: list[str] = Field(default_factory=list)
+    result_inputs: list[str] = Field(default_factory=list)
+    result_outputs: list[str] = Field(default_factory=list)
     allowed_actions: list[str] = Field(default_factory=list)
     knowledge_scope: dict[str, Any] = Field(default_factory=dict)
     capability_refs: SkillCapabilityRefs = Field(default_factory=SkillCapabilityRefs)
@@ -130,6 +132,8 @@ class SkillCard(BaseModel):
             # the node has exactly one responsibility: enter the referenced SOP.
             node.instruction = ""
             node.expected_user_info = []
+            node.result_inputs = []
+            node.result_outputs = []
             node.allowed_actions = []
             node.knowledge_scope = {}
             node.capability_refs = SkillCapabilityRefs()

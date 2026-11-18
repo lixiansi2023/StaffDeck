@@ -77,6 +77,30 @@ def test_skill_editor_only_merges_selected_step() -> None:
     assert response.draft_skill.nodes[1].instruction == current.nodes[1].instruction
 
 
+def test_skill_editor_keeps_builtin_file_read_without_business_tool_registration() -> None:
+    current = _skill_card()
+    candidate = _skill_card()
+    candidate.nodes[0].instruction = "从 b00_form_path 使用 file.read_file_content 读取正文。"
+    candidate.nodes[0].allowed_actions = ["call_tool:file.read_file_content", "continue_flow"]
+
+    response = SkillEditor()._normalize_response(
+        {"draft_skill": candidate.model_dump(), "tool_mentions": [{"name": "file.read_file_content"}]},
+        SkillRewriteRequest(
+            tenant_id="tenant_demo",
+            current_skill=current,
+            instruction="读取表单文件",
+            target_path="nodes.collect_info",
+            available_tools=[],
+        ),
+    )
+
+    node = response.draft_skill.nodes[0]
+    assert "call_tool:read_file" in node.allowed_actions
+    assert "read_file_content" not in node.instruction
+    assert response.tool_suggestions == []
+    assert not any("未配置工具" in warning for warning in response.warnings)
+
+
 def test_skill_editor_merges_multiple_selected_targets() -> None:
     current = _skill_card()
     candidate = _skill_card()

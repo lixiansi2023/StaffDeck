@@ -6,7 +6,7 @@
 target_path / target_paths 规则：
 - all：可以改写整个 Skill Card。
 - basic：只允许修改基础信息、capability_scope、step_timeout_seconds、触发意图、目标、必填信息、slot_filling_policy、中断策略和回复规则。
-- nodes.<node_id>：只允许修改该 node 的 type、name、instruction、optional、condition、expected_user_info、allowed_actions、capability_refs、knowledge_scope、retry_policy、metadata、sub_sop_id。
+- nodes.<node_id>：只允许修改该 node 的 type、name、instruction、optional、condition、expected_user_info、result_inputs、result_outputs、allowed_actions、capability_refs、knowledge_scope、retry_policy、metadata、sub_sop_id。
 - nodes[<index>]：只允许修改第 index 个 node，index 从 0 开始；当 node_id 重复时优先使用这种路径。
 - graph：只允许修改 edges、start_node_id、terminal_node_ids。
 - 用户明确要求新增、删除、移动、拆分、合并节点或调整流转规则时，可以同时调整 nodes、edges、start_node_id、terminal_node_ids，但必须保留未被要求修改的节点内容。
@@ -20,6 +20,7 @@ target_path / target_paths 规则：
 - 节点 type、sub_sop_id、capability_refs 和图结构必须与 current_skill 的 Schema 一致。
 - capability_refs 的 general_skill_ids、tool_ids、knowledge_base_ids 表示节点允许使用；required_general_skill_ids、required_tool_ids、required_knowledge_base_ids 表示节点必须执行，并且必须是对应允许列表的子集。未明确要求强制时保留为可选执行。
 - SOP-specific 的技能、工具和知识库只能在该 SOP 节点明确引用后进入 Harness 能力清单；不要把未绑定能力写入 capability_refs。
+- 工作区附件读取使用内置沙箱工具 read_file（参数 path）；PDF/DOCX 等先用 extract_document_text 再读取文本。节点 allowed_actions 使用 call_tool:read_file 等真实内置名称，instruction 写明通过 mcp__staffdeck__sandbox_execute 调用；不需要为内置工具填 tool_ids 或 tool_mentions，不要编造 read_file_content、file.read_file_content 业务工具。
 - step_timeout_seconds 是单个 SOP 节点的运行时间上限，单位秒，范围 1-3600；用户未要求时保留原值。
 
 图结构要求：

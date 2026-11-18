@@ -257,6 +257,12 @@ class SandboxFacade:
         if not name:
             return ModuleResult.fail("INVALID_ARGUMENTS", "沙箱工具名（tool）不能为空。")
         args = dict(inv.arguments.get("arguments") or {})
+        # Some callers repeat the proxy envelope inside arguments. Only unwrap an
+        # identical tool name; the outer name remains the authorization target.
+        if set(args) == {"tool", "arguments"} and args.get("tool") == name and isinstance(args.get("arguments"), dict):
+            args = dict(args["arguments"])
+        if name == "read_file" and "file_path" in args and "path" not in args:
+            args["path"] = args.pop("file_path")
         result = self._executor.execute(self._context, HarnessToolCall(call_id=inv.invocation_id, name=name, arguments=args))
         if not result.success:
             err = result.error

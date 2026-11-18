@@ -667,7 +667,12 @@ class HarnessV3TaskAgent:
                 if requirement.kind == "sop" and slot.finish is None and stop.kind == "pass":
                     if supervision_attempt == 1:
                         return finish(self._failed(requirement, "HARNESS_ACTION_INVALID", "SOP 步骤未提交有效的结构化结果。", actions=actions))
-                    stop = HookDecision(kind="steer", steer_message="请使用 mcp__staffdeck__submit_step_result 提交当前步骤结果。")
+                    stop = HookDecision(kind="steer", steer_message=(
+                        "本步骤尚未提交结构化结果，仅输出文字不会被执行。请立即调用 "
+                        "mcp__staffdeck__submit_step_result：status 必填，reply_fragment "
+                        "使用你上一条回复的正文，slot_updates 只带本步骤应写的槽位；"
+                        "不要回传累积数组或文件正文，也不要重新执行已完成的业务操作。"
+                    ))
                 if stop.kind == "steer" and supervision_attempt == 1:
                     return finish(self._failed(requirement, "OUTPUT_DENIED", "output still requires revision after supervision", actions=actions))
                 if stop.kind == "steer" and stop.steer_message and not cancelled():

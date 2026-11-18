@@ -20,6 +20,8 @@ class GraphRules:
             "optional": node.get("optional", False),
             "condition": node.get("condition"),
             "expected_user_info": slot_field_names(node.get("expected_user_info")),
+            "result_inputs": slot_field_names(node.get("result_inputs")),
+            "result_outputs": slot_field_names(node.get("result_outputs")),
             "allowed_actions": node.get("allowed_actions") or [],
             "knowledge_scope": node.get("knowledge_scope") or {},
             "retry_policy": node.get("retry_policy") or {},

@@ -22,6 +22,8 @@ def system_tool_guide(kind: str, names: set[str] | None = None) -> str:
             lines.append(f"- mcp__staffdeck__{name}：{spec['description']} 参数 schema：{json.dumps(spec['parameters'], ensure_ascii=False, separators=(',', ':'))}")
     if "tool_invoke" in enabled:
         lines.append('业务调用格式示例：mcp__staffdeck__tool_invoke({"tool_id":"<describe 返回的 id>","arguments":{...}})。示例占位符不可原样提交。')
+    if "sandbox_execute" in enabled:
+        lines.append('读取工作区文件示例：mcp__staffdeck__sandbox_execute({"tool":"read_file","arguments":{"path":"/workspace/attachments/example.json"}})。arguments 内直接放 read_file 参数，不要重复放 tool/arguments；路径字段名是 path。')
     lines.extend([
         '扩展模块格式：mcp__staffdeck__capability_invoke({"operation":"<返回的版本化 operation>","resource_id":"<返回的 id>","arguments":{...}})。',
         "general_skill_read 只加载技能说明，并不执行脚本；需要实际操作时，再使用已提供的业务或 sandbox_execute 接口。",

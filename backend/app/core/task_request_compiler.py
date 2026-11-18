@@ -62,6 +62,7 @@ class TaskRequirement(BaseModel):
     current_user_message: str = ""
     current_time: str = ""
     expected_slots: list[str] = Field(default_factory=list)
+    result_outputs: list[str] = Field(default_factory=list)
     default_result_status: Literal["completed", "awaiting_user", "handoff"] = "completed"
     source_user_message: str = ""
     out_of_scope_task_intents: list[str] = Field(default_factory=list)
@@ -127,6 +128,8 @@ class TaskRequestCompiler:
     ) -> TaskRequirement:
         current_node = _current_node(skill, frame.target_step_id or session.active_step_id)
         expected_fields = slot_field_names((current_node or {}).get("expected_user_info"))
+        result_inputs = slot_field_names((current_node or {}).get("result_inputs"))
+        result_outputs = slot_field_names((current_node or {}).get("result_outputs"))
         known_slots = (
             {
                 str(key): value
@@ -136,6 +139,13 @@ class TaskRequestCompiler:
             if frame.kind == "sop"
             else {}
         )
+        if result_inputs:
+            visible_fields = set(result_inputs) | set(expected_fields)
+            if skill is not None:
+                visible_fields.update(slot_field_names((skill.content_json or {}).get("required_info")))
+            known_slots = {
+                key: value for key, value in known_slots.items() if key in visible_fields
+            }
         required_slots = [
             field for field in expected_fields if not _slot_satisfied(known_slots.get(field))
         ]
@@ -143,6 +153,8 @@ class TaskRequestCompiler:
             [
                 str((current_node or {}).get("instruction") or "").strip(),
                 ("补齐以下字段：" + "、".join(required_slots) if required_slots else ""),
+                ("读取已有步骤结果：" + "、".join(result_inputs) if result_inputs else ""),
+                ("本步骤结果写入：" + "、".join(result_outputs) if result_outputs else ""),
                 *frame.requirements,
             ]
         )
@@ -183,6 +195,7 @@ class TaskRequestCompiler:
             goal=goal,
             current_time=_current_time_text(client_timezone),
             expected_slots=expected_fields,
+            result_outputs=result_outputs,
             default_result_status="handoff" if frame.decision == "handoff_human" else "awaiting_user" if frame.decision == "clarify" else "completed",
             source_user_message=str(source_user_message or "").strip()[:4_000],
             out_of_scope_task_intents=_unique(

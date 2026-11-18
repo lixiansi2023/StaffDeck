@@ -71,6 +71,83 @@ def test_fallback_card_is_not_domain_hardcoded_for_commerce_text() -> None:
     )
 
 
+def test_uploaded_document_fields_do_not_block_review_before_file_read() -> None:
+    request = SkillDistillRequest(
+        tenant_id="tenant_demo",
+        title="产权相关资料申请文件呈批表",
+        raw_content="上传 Q00 申请表和 Q01 依据文件，读取表单后审核申请事由。",
+    )
+    raw = {"draft_skill": {
+        "skill_id": "property_review",
+        "name": "产权资料点检",
+        "required_info": [
+            "request_id", "q00_file_path", "q01_file_path", "form_code", "project_name",
+        ],
+        "slot_filling_policy": {"target_info": [
+            "request_id", "q00_file_path", "q01_file_path", "form_code", "project_name",
+        ]},
+        "nodes": [
+            {"node_id": "collect", "type": "collect_info", "name": "收集基础信息",
+             "instruction": "请用户提供 request_id、q00_file_path、q01_file_path、form_code、project_name。",
+             "expected_user_info": [
+                 "request_id", "q00_file_path", "q01_file_path", "form_code", "project_name",
+             ], "allowed_actions": ["ask_user", "continue_flow"]},
+            {"node_id": "read_q00", "type": "tool_call", "name": "读取申请表",
+             "instruction": "用 q00_file_path 读取 Q00，并提取 request_id、form_code。",
+             "allowed_actions": ["call_tool:read_file", "continue_flow"],
+             "result_outputs": ["q00_summary"]},
+            {"node_id": "review", "type": "decision", "name": "判定申请事由",
+             "instruction": "据 Q00 判定。", "result_inputs": ["q00_summary"],
+             "result_outputs": ["review_01"], "allowed_actions": ["answer_user"]},
+        ],
+        "start_node_id": "collect", "terminal_node_ids": ["review"],
+    }}
+
+    card = _normalize(raw, request).draft_skill
+    nodes = {node.node_id: node for node in card.nodes}
+    assert card.required_info == []
+    assert card.slot_filling_policy["target_info"] == []
+    assert nodes["collect"].expected_user_info == []
+    assert nodes["collect"].result_outputs == ["q00_file_path", "q01_file_path"]
+    assert "用户复述路径" in nodes["collect"].instruction
+    assert "call_tool:read_file" in nodes["collect"].allowed_actions
+    assert "call_tool:extract_document_text" in nodes["collect"].allowed_actions
+    assert nodes["read_q00"].result_inputs == ["q00_file_path"]
+    assert nodes["read_q00"].result_outputs == ["q00_summary"]
+    assert "call_tool:extract_document_text" in nodes["read_q00"].allowed_actions
+    assert "无法解析" in nodes["read_q00"].instruction
+    assert "根据结果继续当前流程" in nodes["read_q00"].instruction
+    assert "进入最终回复" not in nodes["read_q00"].instruction
+    assert nodes["review"].result_inputs == ["q00_summary"]
+    assert nodes["review"].result_outputs == ["review_01"]
+
+
+def test_rule_review_drops_unrelated_knowledge_base() -> None:
+    request = SkillDistillRequest(
+        tenant_id="tenant_demo",
+        title="产权资料点检",
+        raw_content="依据 AS-R01 和 AS-R02 判定产权资料申请。",
+        available_knowledge_bases=[{
+            "id": "kb_f02", "name": "规则-非工程招标点检 F02",
+            "description": "F02 非工程招标采购文件点检的审核要素",
+        }],
+    )
+    raw = {"draft_skill": {
+        "skill_id": "property_review", "name": "产权资料点检",
+        "nodes": [{
+            "node_id": "review", "type": "knowledge_query", "name": "AS-R01 判定",
+            "instruction": "依据 AS-R01 判定申请原因。",
+            "allowed_actions": ["answer_user"],
+            "capability_refs": {"knowledge_base_ids": ["kb_f02"]},
+        }],
+        "start_node_id": "review", "terminal_node_ids": ["review"],
+    }}
+
+    response = _normalize(raw, request)
+    assert response.draft_skill.nodes[0].capability_refs.knowledge_base_ids == []
+    assert any("不同规则系列" in warning for warning in response.warnings)
+
+
 def test_model_input_uses_plain_text_and_compacts_available_tools() -> None:
     request = SkillDistillRequest(
         tenant_id="tenant_demo",
@@ -777,6 +854,48 @@ def test_normalize_response_drops_tool_suggestion_when_url_not_in_source() -> No
     assert response.tool_suggestions == []
     assert any("未配置工具 member.issue_benefit" in warning for warning in response.warnings)
     assert any("当前不能新增" in warning for warning in response.warnings)
+
+
+def test_normalize_response_uses_builtin_read_file_for_workspace_paths() -> None:
+    request = SkillDistillRequest(
+        tenant_id="tenant_demo",
+        title="附件审核",
+        raw_content="从 b00_form_path 读取表单，从 b04_summary_path 读取汇总表并审核。",
+        available_tools=[],
+    )
+    response = _normalize({
+        "draft_skill": {
+            "skill_id": "attachment_review",
+            "name": "附件审核",
+            "steps": [
+                {
+                    "step_id": "n2_1",
+                    "name": "读取材料",
+                    "instruction": "用 file.read_file_content 读取 b00_form_path。",
+                    "allowed_actions": ["call_tool:file.read_file_content", "continue_flow"],
+                },
+                {
+                    "step_id": "n3",
+                    "name": "审核汇总表",
+                    "instruction": "用 read_file_content 读取 b04_summary_path 后审核。",
+                    "allowed_actions": ["continue_flow"],
+                },
+                {
+                    "step_id": "n5",
+                    "name": "反馈",
+                    "instruction": "反馈审核结果。",
+                    "allowed_actions": ["answer_user"],
+                },
+            ],
+        },
+        "tool_mentions": [{"name": "file.read_file_content"}],
+    }, request)
+
+    for node in response.draft_skill.nodes[:2]:
+        assert "call_tool:read_file" in node.allowed_actions
+        assert "read_file_content" not in node.instruction
+    assert response.tool_suggestions == []
+    assert not any("未配置工具" in warning for warning in response.warnings)
 
 
 def test_normalize_response_does_not_suggest_tool_from_raw_text_only() -> None:

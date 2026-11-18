@@ -59,8 +59,18 @@ class ExecutionSlice:
         lines.append(SOP_STEP_SUBMIT_RULE)
         if self.expected_user_info:
             lines.append("需要收集的信息：" + "、".join(self.expected_user_info))
+        result_inputs = slot_field_names(self.node.get("result_inputs"))
+        result_outputs = slot_field_names(self.node.get("result_outputs"))
+        if result_inputs:
+            lines.append("读取已有步骤结果：" + "、".join(result_inputs))
+        if result_outputs:
+            lines.append("本步骤结果字段（提交时写入 slot_updates）：" + "、".join(result_outputs))
         if self.slots:
-            filled = [f"{k}={v}" for k, v in self.slots.items() if v not in (None, "", [], {})]
+            visible_fields = set(result_inputs) | set(self.expected_user_info)
+            filled = [
+                f"{k}={v}" for k, v in self.slots.items()
+                if v not in (None, "", [], {}) and (not result_inputs or k in visible_fields)
+            ]
             if filled:
                 lines.append("已知信息：" + "；".join(filled))
         if self.resolved_slots:

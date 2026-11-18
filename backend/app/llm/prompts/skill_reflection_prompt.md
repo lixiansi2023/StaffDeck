@@ -6,9 +6,14 @@
 反思要求：
 - 只基于 source、candidate_skill、available_tools、available_sops 和已有 tool_suggestions 判断，不要臆造新的业务要求。
 - 如果 candidate_skill.allowed_actions 引用了 tool_suggestions 中 resolution_status 为 existing 或 new_candidate 的工具，保留该 action；不要仅因为该工具尚未出现在 available_tools 中而判定 tool_grounding 失败、删除工具动作或重写成非工具流程。用户确认或拒绝新增工具由后续交互处理。
+- 内置沙箱文件工具 read_file、extract_document_text、list_directory、glob、grep、file_info 可直接用于读取工作区附件，不属于 available_tools 业务目录，也不需要 tool_suggestions。文件读取节点保留 call_tool:read_file 等动作；instruction 不写 mcp__staffdeck__ 等后台调用协议。若草稿误写 read_file_content 或 file.read_file_content，改成 read_file，不要要求注册这两个名称。
 - 如果问题来自原始文档或原始 Skill 本身，而不是 candidate_skill 的改写错误，请把 origin 标为 source_input。
 - 如果问题来自 candidate_skill 的生成或改写，请把 origin 标为 generated_skill。
 - 如果不确定来源，请把 origin 标为 unclear。
+- 检查 required_info/expected_user_info 是否误把上传附件路径、表单正文中的申请编号/代码/项目名称列为用户开头必填项；这些信息应先从附件及正文提取，实际缺失且后续必需时才追问。
+- 检查每个节点的 result_inputs/result_outputs 是否形成完整的数据交接：附件只传路径或简短摘要，规则节点逐条输出结论，汇总节点读取这些结论；不得把材料正文写入步骤结果。
+- 上传附件格式未知时，检查读取节点是否同时允许文本读取和文档文本提取，并在无法解析或提取为空时请求可读取材料；不得假定用户上传的是 Markdown，也不得在未读到内容时给出实质判定。
+- 检查所选知识库是否有足够依据支持当前节点的业务规则；仅凭可见、名称相近或模型推测不足以证明匹配。依据不明时要求移除引用并说明缺失或不确定之处。
 - 如果 passed=false 且问题可以通过改写 Skill Card 解决，必须返回完整 draft_skill。
 - 如果 passed=false 但主要问题来自 source_input，仍可返回一个尽量保守闭环的 draft_skill，同时在 source_warnings 中说明原始输入问题。
 - 如果已经通过，draft_skill 可以省略。
@@ -18,7 +23,7 @@ Rubric 定义：
 1. source_alignment：技能目标、触发意图、graph 节点/边和必要字段是否与用户原始文档/改写要求一致；是否避免添加 source 未要求的无关流程。
 2. closed_loop：流程是否能走到明确最终回复；是否避免把“请稍候/正在处理/稍后反馈”作为最终可见结果。
 3. adaptive_progression：是否支持一次用户消息抽取多个字段，已满足字段不重复追问，节点是目标而不是固定脚本。
-4. tool_grounding：工具调用是否只使用 available_tools，或使用 tool_suggestions 中 resolution_status 为 existing/new_candidate 且来源明确的工具。若 allowed_actions 引用的工具已出现在 tool_suggestions 中，不得仅因不在 available_tools 而判失败；只有既不在 available_tools、也不在 tool_suggestions(existing/new_candidate) 中的工具才是 grounding 失败。
+4. tool_grounding：业务工具调用是否只使用 available_tools，或使用 tool_suggestions 中 resolution_status 为 existing/new_candidate 且来源明确的工具；上述内置沙箱文件工具另行允许。若 allowed_actions 引用的业务工具已出现在 tool_suggestions 中，不得仅因不在 available_tools 而判失败；只有既不在 available_tools、也不在 tool_suggestions(existing/new_candidate) 中且不是内置文件工具的工具才是 grounding 失败。
 5. tool_call_format：allowed_actions 中的工具调用是否完整规范；需要调用工具时必须写成 `call_tool:<tool_name>`，其中 `<tool_name>` 必须是具体工具名；不得只写 `call_tool`、`call_tool:` 或把工具名只写在 instruction 里。
 6. graph_integrity：node_id 是否唯一；start/terminal/edge 是否只引用现有节点；节点增删改名后是否没有悬空边；流转是否只来自当前节点的合法后继。
 7. nested_sop_grounding：subflow 是否只引用 available_sops 中 selectable=true 的已发布 SOP；是否避免自引用、间接循环和过深嵌套；subflow 节点是否只承担子 SOP 调用而没有额外 instruction、action、capability 或 knowledge 工作。

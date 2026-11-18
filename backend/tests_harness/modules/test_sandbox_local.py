@@ -223,12 +223,39 @@ def test_provider_sandbox_local_write_then_read_in_workspace(module, host, invoc
     assert {s["name"] for s in h._sandbox.schemas()} == names
 
 
+def test_provider_sandbox_local_accepts_repeated_read_file_envelope(module, host, invocation, tmp_path):
+    provider = module(MODULE_ID).provider
+    h = host()
+    file = tmp_path / "ws" / "attachments" / "input.json"
+    file.parent.mkdir(parents=True)
+    file.write_text('{"ok": true}', encoding="utf-8")
+
+    res = invoke_provider(provider, h, invocation(OPERATION, module_id="sandbox", arguments={
+        "tool": "read_file", "arguments": {
+            "tool": "read_file", "arguments": {"file_path": "/workspace/attachments/input.json"},
+        },
+    }))
+    assert res.success is True, res.error
+    assert res.data["content"] == '{"ok": true}'
+
+
+def test_provider_sandbox_local_rejects_conflicting_repeated_tool(module, host, invocation):
+    provider = module(MODULE_ID).provider
+    res = invoke_provider(provider, host(), invocation(OPERATION, module_id="sandbox", arguments={
+        "tool": "read_file", "arguments": {
+            "tool": "write_file", "arguments": {"path": "input.json", "content": "unsafe"},
+        },
+    }))
+    assert res.success is False
+    assert res.error["code"] == "INVALID_ARGUMENTS"
+
+
 def test_provider_sandbox_local_invalid_arguments(module, host, invocation):
     provider = module(MODULE_ID).provider
     res = invoke_provider(provider, host(), _call(invocation, "read_file"))
     assert res.success is False
     assert res.error["code"]
-    assert isinstance(res.extensions.get("details"), dict)
+    assert isinstance(res.error.get("details"), dict)
 
 
 def test_provider_sandbox_local_missing_file(module, host, invocation):
