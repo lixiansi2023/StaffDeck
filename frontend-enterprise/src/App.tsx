@@ -18,11 +18,6 @@ import {
   type EnterpriseAuthUser,
 } from "./auth";
 import AppSidebar from "./components/AppSidebar";
-import OnboardingGuide, { ONBOARDING_SEEN_KEY } from "./components/OnboardingGuide";
-import QuickStartGuide, {
-  QUICK_START_COMPLETED_EVENT,
-  QUICK_START_SEEN_KEY,
-} from "./components/QuickStartGuide";
 import UpdateReminder from "./components/UpdateReminder";
 import StaffdeckIcon from "./components/StaffdeckIcon";
 import { SidebarProvider } from "@/components/ui/sidebar";
@@ -157,11 +152,9 @@ const EMPTY_AGENT_FORM: AgentCreateFormState = {
 function Shell({
   auth,
   onLogout,
-  guidesCompleted,
 }: {
   auth: EnterpriseAuthSession;
   onLogout: () => void;
-  guidesCompleted: boolean;
 }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -401,7 +394,7 @@ function Shell({
 
   const scopeAgents = agents.filter(canUseAgentScope);
   const hasUsableModelConfig = modelConfigs.some((item) => item.enabled);
-  const showModelSetupNotice = guidesCompleted && modelConfigsLoaded && !hasUsableModelConfig;
+  const showModelSetupNotice = modelConfigsLoaded && !hasUsableModelConfig;
   const modelSetupNoticeText = isAdmin
     ? t("还没有可用模型配置，数字员工暂不能调用模型。请先完成模型配置。")
     : t("系统管理员尚未配置可用模型，数字员工暂不能调用模型。请联系管理员完成模型配置。");
@@ -1014,11 +1007,9 @@ function Shell({
 function AuthedApp({
   auth,
   onLogout,
-  guidesCompleted,
 }: {
   auth: EnterpriseAuthSession;
   onLogout: () => void;
-  guidesCompleted: boolean;
 }) {
   const location = useLocation();
   if (location.pathname === "/") {
@@ -1074,7 +1065,7 @@ function AuthedApp({
       </Suspense>
     );
   }
-  return <Shell auth={auth} onLogout={onLogout} guidesCompleted={guidesCompleted} />;
+  return <Shell auth={auth} onLogout={onLogout} />;
 }
 
 export default function App() {
@@ -1085,16 +1076,6 @@ export default function App() {
     getEnterpriseAuthSession(),
   );
   const [authChecked, setAuthChecked] = useState(() => !auth?.token);
-  const [guidesCompleted, setGuidesCompleted] = useState(() => Boolean(
-    window.localStorage.getItem(ONBOARDING_SEEN_KEY)
-    && window.localStorage.getItem(QUICK_START_SEEN_KEY),
-  ));
-
-  useEffect(() => {
-    const onQuickStartCompleted = () => setGuidesCompleted(true);
-    window.addEventListener(QUICK_START_COMPLETED_EVENT, onQuickStartCompleted);
-    return () => window.removeEventListener(QUICK_START_COMPLETED_EVENT, onQuickStartCompleted);
-  }, []);
 
   useEffect(() => {
     if (!auth?.token) {
@@ -1142,7 +1123,6 @@ export default function App() {
                 <AuthedApp
                   auth={auth}
                   onLogout={logout}
-                  guidesCompleted={guidesCompleted}
                 />
               ) : (
                 <LoginPage onLogin={setAuth} />
@@ -1150,9 +1130,7 @@ export default function App() {
             }
           />
         </Routes>
-        {auth && authChecked ? <OnboardingGuide /> : null}
-        {auth && authChecked ? <QuickStartGuide isAdmin={isEnterpriseAdmin(auth.user)} /> : null}
-        {auth && authChecked ? <UpdateReminder enabled={guidesCompleted} /> : null}
+        {auth && authChecked ? <UpdateReminder enabled /> : null}
       </BrowserRouter>
       <Toaster richColors closeButton position="top-center" />
     </TooltipProvider>

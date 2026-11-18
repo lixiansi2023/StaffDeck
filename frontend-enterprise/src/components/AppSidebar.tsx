@@ -169,7 +169,6 @@ function PrimaryNavButton({
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
-        data-guide-target={`route-${item.route}`}
         tooltip={item.label}
         isActive={selected === item.route}
         onClick={() => onNavigate(item.route)}
@@ -205,7 +204,6 @@ function CardNavButton({
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
-        data-guide-target={`route-${item.route}`}
         tooltip={item.label}
         isActive={selected === item.route}
         onClick={() => onNavigate(item.route)}
@@ -279,7 +277,6 @@ function ManagementTabs({
             type="button"
             role="tab"
             aria-selected={selected}
-            data-guide-target={`sidebar-tab-${tab.key}`}
             onClick={() => onSelect(tab.key)}
             className={cn(
               'relative flex h-[30px] flex-1 items-center justify-center gap-[5px] rounded-[9px] text-[12px] transition-colors',
@@ -477,7 +474,6 @@ function SidebarFooterActions({ onOpenChat }: { onOpenChat: () => void }) {
     >
       <button
         type="button"
-        data-guide-target="open-chat"
         onClick={onOpenChat}
         title="对话端"
         className={cn(

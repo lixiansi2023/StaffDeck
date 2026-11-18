@@ -40,7 +40,6 @@ import IconSearch from '../assets/icons/search.svg?react';
 import { StatusBadge } from './scheduled-tasks/StatusBadge';
 import { useClientPagination } from '../hooks/useClientPagination';
 import type { ModelConfigRead } from '../types';
-import { OPEN_MODEL_CREATE_EVENT } from '@/components/QuickStartGuide';
 
 const MODEL_PAGE_SIZE = 8;
 const MODEL_TEST_UI_TIMEOUT_MS = 100_000;
@@ -168,12 +167,6 @@ export default function ModelsPage({
     void api
       .get<{ protocols: ModelForm['api_protocol'][] }>(`/api/enterprise/model-configs/protocols?tenant_id=${TENANT_ID}`)
       .then((result) => setAvailableProtocols(result.protocols));
-  }, []);
-
-  useEffect(() => {
-    const openCreate = () => createBlank();
-    window.addEventListener(OPEN_MODEL_CREATE_EVENT, openCreate);
-    return () => window.removeEventListener(OPEN_MODEL_CREATE_EVENT, openCreate);
   }, []);
 
   const filteredRows = useMemo(() => {
@@ -469,7 +462,6 @@ export default function ModelsPage({
           刷新
         </UIButton>
         <UIButton
-          data-guide-target="models-create"
           onClick={createBlank}
           className="h-[34px] gap-[4px] rounded-[10px] bg-[#18181a] px-[20px] text-[12px] font-normal text-white hover:bg-[#303030]"
         >

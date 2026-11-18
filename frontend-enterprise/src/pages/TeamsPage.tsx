@@ -351,7 +351,6 @@ export default function TeamsPage({
               </div>
             ))}
             <button
-              data-guide-target="teams-create"
               type="button"
               onClick={() => setCreateOpen(true)}
               className={`${summaryCardClass} hover:shadow-[0_16px_30px_0_rgba(0,0,0,0.10)]`}
