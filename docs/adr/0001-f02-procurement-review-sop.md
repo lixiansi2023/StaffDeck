@@ -85,6 +85,17 @@ n11 render_audit_report ──> report_url ──> reply_fragment
 - `response_rules` 新增全局约束「禁止把文件正文写入任何槽位或 submit_step_result 参数」。
 - 已在招采数字员工（分支 v1.7.0）与小明（v1.0.0）两侧重新发布并校验：n0 路径引用/禁写正文、n2 read_file 均生效。
 
+### D7：结论槽位也按「一条一槽」拆分（同类溢出复发）
+
+D6 只处理了 `source_docs`，n1–n8 仍要求 `slot_updates={'review_items':[已累积的 items]}`：每个检查节点都把此前所有结论连同 evidence 再回传一次，载荷随节点数单调增长。实跑在 n8（要素 8 异议澄清弃标流程约定）复发：模型正确生成了判定文本，但 8 条累积项塞入 `submit_step_result` 后参数被解析成空对象，报 `'status' is a required property`，结果修正耗尽后抛 `HARNESS_ACTION_INVALID: SOP 步骤未提交有效的结构化结果`。引擎会话记录可见同型证据：n0 的 10990 字符提交同样先报该错，缩短后才接受。
+
+决策（D7，与 D6 同一模式）：
+- n1–n8 各自只写 `review_01`…`review_08` 中属于自己的**一条对象**，禁止回传 `review_items` 数组或其它节点的结论；`review_items` 槽位彻底停用（从 `slot_filling_policy.target_info` 移除）。
+- n9 从 8 个独立槽位逐条读取并汇总 `items`；`evidence` 只写一句话摘要，禁止抄录文件段落。
+- `response_rules` 增补全局约束：submit 参数只带本节点结论槽位。
+- 运行时兜底：`task_agent.py` 的 `turn_stopping` steer 文案从泛化提示改为可执行指令（明确 status/reply_fragment/slot_updates 的填法，禁止回传累积数组、禁止重做业务动作），降低模型只写文字不提交的概率。
+- 需重新执行 `create_f02_review_sop.py --local --publish` 与 `import_f02_sop_to_xiaoming.py` 把新内容发布到两侧员工后才生效。
+
 ## 风险与验收
 
 - 风险：规则知识库未建则 D1 不生效（当前节点 instruction 已内联口径，可先跑通）；两个 MCP server 同名工具需在 `tool_ids` 上精确区分，不能只填名字。

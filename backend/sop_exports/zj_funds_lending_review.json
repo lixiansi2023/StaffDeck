@@ -1,0 +1,313 @@
+{
+  "skill_id": "zj_funds_lending_review",
+  "name": "ZJ 资金出借协审 SOP",
+  "version": "1.0.0",
+  "business_domain": "资金",
+  "description": "按 ZJ 规则库 V1.0 审阅资金出借审批单并生成报告。",
+  "capability_scope": "general",
+  "step_timeout_seconds": 600,
+  "trigger_intents": [
+    "资金出借协审",
+    "资金出借审批单点检"
+  ],
+  "user_utterance_examples": [
+    "按 ZJ 规则审阅这份资金出借审批单",
+    "对资金出借审批单做协审并出报告"
+  ],
+  "goal": [
+    "按内容识别本流程所需材料",
+    "只判定 ZJ-R06, ZJ-R07",
+    "保存本次流程结论并生成报告"
+  ],
+  "required_info": [
+    "attachments",
+    "request_id"
+  ],
+  "slot_filling_policy": {
+    "enabled": true,
+    "extract_scope": "all_skill_expected_user_info",
+    "multi_slot_per_turn": true,
+    "skip_satisfied_steps": true,
+    "target_info": [
+      "attachments",
+      "request_id"
+    ],
+    "description": "只从用户输入中识别申请资料；步骤结果由节点结果配置传递。"
+  },
+  "response_rules": [
+    "只评本流程规则，不混入其他流程",
+    "level 只能是风险/关注/通过",
+    "必要材料缺失记关注（待补正），不得冒充通过；证据一句话摘要",
+    "摘要统计必须与逐项结论一致；有风险时不得建议通过",
+    "材料索引只存路径；报告链接必须来自实际生成结果"
+  ],
+  "nodes": [
+    {
+      "node_id": "n0_collect",
+      "type": "collect_info",
+      "name": "识别表单与材料",
+      "instruction": "本次仅审核「资金出借审批单」，适用 ZJ-R06, ZJ-R07。以材料正文确认待审表单及相关附件的类型，文件名仅供参考。B00 为待审费控/OA表单，B01 为资金池 T-1 可用余额快照，B02 为账户台账或银企主数据，B03 为三会决议或纪要，B04 为 BIP 贷款信息汇总表。从 B00 核实申请编号、原始表单编号、项目名称和实际申请事项；示例表单编号 ZJ-CJ01 仅供识别，不作为固定要求。申请事项不属于本审核范围时，提示改选对应流程。缺待审表单、申请编号或无法确认申请事项时，请求补充材料。其他材料缺失时在对应审核项说明待补正，不猜测事实。",
+      "optional": false,
+      "condition": null,
+      "expected_user_info": [],
+      "result_inputs": [],
+      "result_outputs": [
+        "attachment_role_map",
+        "source_docs",
+        "audit_meta"
+      ],
+      "allowed_actions": [
+        "call_tool:list_directory",
+        "call_tool:read_file",
+        "continue_flow"
+      ],
+      "knowledge_scope": {},
+      "capability_refs": {
+        "general_skill_ids": [],
+        "tool_ids": [],
+        "knowledge_base_ids": [],
+        "required_general_skill_ids": [],
+        "required_tool_ids": [],
+        "required_knowledge_base_ids": []
+      },
+      "retry_policy": {},
+      "metadata": {},
+      "sub_sop_id": null,
+      "assignee_user_id": null,
+      "assignee_notify_channel": null
+    },
+    {
+      "node_id": "n6_review",
+      "type": "collect_info",
+      "name": "ZJ-R06 出借决策程序",
+      "instruction": "依据以下规则判定本次申请。必要材料缺失、无法实质判定时记关注（待补正）；已有证据明确命中风险时仍记风险。结论须写明具体比对、处理意见，并用一句话注明材料、字段或条款及关键数值。\n\n## ZJ-R06 出借决策程序\n\n审核要素：核对资金出借事项是否经集团「三会」审议、决议是否有效。又称「出借决策程序」。\n判定规则：先定义「三会」口径（党委会/经营班子会/董事会）；核对 B03 决议类型、日期、文号、议题、审议金额、表决结果、签章七项；缺决议 → 关注（建议补正）；决议晚于申请、事项不符 → 风险·拦截。D7 记风险·拦截、H7 记关注，本库按 D7 记风险，H7 原文作为口径依据保留。\n级别映射：缺决议 → 关注；决议晚于申请 / 事项不符 → 风险；决议齐全且有效 → 通过。原表要求核对签章，却未单独定义「签章缺失」的影响；发现缺失时记录关注（待补正）并说明原表未定义该级别，不能声称原表规定为风险。\n数据锚点：B03.决议七项核对信息；B00.资金出借审批单申请日期 / 出借金额 / 借款人。依据《珠海交通控股集团有限公司内部借款管理制度（2026年修订）》。",
+      "optional": false,
+      "condition": null,
+      "expected_user_info": [],
+      "result_inputs": [
+        "source_docs"
+      ],
+      "result_outputs": [
+        "review_06"
+      ],
+      "allowed_actions": [
+        "call_tool:read_file",
+        "continue_flow"
+      ],
+      "knowledge_scope": {},
+      "capability_refs": {
+        "general_skill_ids": [],
+        "tool_ids": [],
+        "knowledge_base_ids": [],
+        "required_general_skill_ids": [],
+        "required_tool_ids": [],
+        "required_knowledge_base_ids": []
+      },
+      "retry_policy": {},
+      "metadata": {
+        "rule_id": "ZJ-R06",
+        "rule_lib_version": "V1.0"
+      },
+      "sub_sop_id": null,
+      "assignee_user_id": null,
+      "assignee_notify_channel": null
+    },
+    {
+      "node_id": "n7_review",
+      "type": "collect_info",
+      "name": "ZJ-R07 资金出借主体、借款人主体、金额、期限符合决议",
+      "instruction": "依据以下规则判定本次申请。必要材料缺失、无法实质判定时记关注（待补正）；已有证据明确命中风险时仍记风险。结论须写明具体比对、处理意见，并用一句话注明材料、字段或条款及关键数值。\n\n## ZJ-R07 资金出借主体、借款人主体、金额、期限符合决议\n\n审核要素：核对出借审批四要素是否落入决议批复范围。又称「出借要素与决议一致」。\n判定规则：按 4 个字段逐项拆开比对——出借主体、借款人主体（可能为简称）、金额（大小写一致，金额 ≤ 决议金额）、期限（≤ 决议期限）；任一不符 → 风险。\n级别映射：四要素任一超出决议或大小写不一致 → 风险；四项均符合 → 通过。\n数据锚点：B00 表单取对应字段（出借主体 / 借款人主体 / 金额 / 期限）；B03.决议对应四项批复。依据《珠海交通控股集团有限公司内部借款管理制度（2026年修订）》。",
+      "optional": false,
+      "condition": null,
+      "expected_user_info": [],
+      "result_inputs": [
+        "source_docs"
+      ],
+      "result_outputs": [
+        "review_07"
+      ],
+      "allowed_actions": [
+        "call_tool:read_file",
+        "continue_flow"
+      ],
+      "knowledge_scope": {},
+      "capability_refs": {
+        "general_skill_ids": [],
+        "tool_ids": [],
+        "knowledge_base_ids": [],
+        "required_general_skill_ids": [],
+        "required_tool_ids": [],
+        "required_knowledge_base_ids": []
+      },
+      "retry_policy": {},
+      "metadata": {
+        "rule_id": "ZJ-R07",
+        "rule_lib_version": "V1.0"
+      },
+      "sub_sop_id": null,
+      "assignee_user_id": null,
+      "assignee_notify_channel": null
+    },
+    {
+      "node_id": "n9_aggregate",
+      "type": "collect_info",
+      "name": "汇总本流程结论",
+      "instruction": "汇总本流程 ZJ-R06, ZJ-R07 的 2 条审阅结论，逐条保留审核要素、意见、级别、规则编号和证据，不混入其他流程。统计风险 X、关注 Y、通过 Z，X+Y+Z 必须等于 2。全通过→建议通过；有风险且可补正→建议有条件通过，并写明处理条件；有风险且不可补正→建议不通过；仅有关注→建议通过，关注事项跟进。摘要写为'共评审 2 项：X 项风险、Y 项关注、Z 项通过；一句话处理意见'。保留原表单编号、项目名称和规则版本 V1.0，形成供保存使用的汇总结论；其中逐项结论保留原有规则编号、审核要素、意见、级别和证据，并包含申请编号、原始表单编号、项目名称、规则版本、综合结论、处理条件及摘要。自检统计、级别和风险结论。",
+      "optional": false,
+      "condition": null,
+      "expected_user_info": [],
+      "result_inputs": [
+        "audit_meta",
+        "review_06",
+        "review_07"
+      ],
+      "result_outputs": [
+        "audit_payload"
+      ],
+      "allowed_actions": [
+        "continue_flow"
+      ],
+      "knowledge_scope": {},
+      "capability_refs": {
+        "general_skill_ids": [],
+        "tool_ids": [],
+        "knowledge_base_ids": [],
+        "required_general_skill_ids": [],
+        "required_tool_ids": [],
+        "required_knowledge_base_ids": []
+      },
+      "retry_policy": {},
+      "metadata": {},
+      "sub_sop_id": null,
+      "assignee_user_id": null,
+      "assignee_notify_channel": null
+    },
+    {
+      "node_id": "n10_save",
+      "type": "tool_call",
+      "name": "保存协审结果",
+      "instruction": "保存已核对的协审结果，保留原表单编号、逐项意见与证据、综合结论及处理条件。保存失败时说明原因并暂停，不得声称已完成。成功后记录实际保存回执。",
+      "optional": false,
+      "condition": null,
+      "expected_user_info": [],
+      "result_inputs": [
+        "audit_payload"
+      ],
+      "result_outputs": [
+        "save_result"
+      ],
+      "allowed_actions": [
+        "call_tool:audit_report.save_audit_result",
+        "continue_flow"
+      ],
+      "knowledge_scope": {},
+      "capability_refs": {
+        "general_skill_ids": [],
+        "tool_ids": [
+          "tool_6bcf3633f3bb40ab"
+        ],
+        "knowledge_base_ids": [],
+        "required_general_skill_ids": [],
+        "required_tool_ids": [
+          "tool_6bcf3633f3bb40ab"
+        ],
+        "required_knowledge_base_ids": []
+      },
+      "retry_policy": {},
+      "metadata": {
+        "tool_name": "audit_report.save_audit_result",
+        "mcp_server_id": "mcpsrv_916017f8640a4832"
+      },
+      "sub_sop_id": null,
+      "assignee_user_id": null,
+      "assignee_notify_channel": null
+    },
+    {
+      "node_id": "n11_report",
+      "type": "tool_call",
+      "name": "生成协审报告",
+      "instruction": "确认保存成功后生成协审报告。向用户说明综合结论、风险/关注/通过数、处理条件和关注事项，并提供实际生成的报告链接；不得编造链接。",
+      "optional": false,
+      "condition": null,
+      "expected_user_info": [],
+      "result_inputs": [
+        "audit_payload",
+        "save_result"
+      ],
+      "result_outputs": [
+        "report_url"
+      ],
+      "allowed_actions": [
+        "call_tool:audit_report.render_audit_report",
+        "answer_user"
+      ],
+      "knowledge_scope": {},
+      "capability_refs": {
+        "general_skill_ids": [],
+        "tool_ids": [
+          "tool_d8d13de114f34657"
+        ],
+        "knowledge_base_ids": [],
+        "required_general_skill_ids": [],
+        "required_tool_ids": [
+          "tool_d8d13de114f34657"
+        ],
+        "required_knowledge_base_ids": []
+      },
+      "retry_policy": {},
+      "metadata": {
+        "tool_name": "audit_report.render_audit_report",
+        "mcp_server_id": "mcpsrv_916017f8640a4832"
+      },
+      "sub_sop_id": null,
+      "assignee_user_id": null,
+      "assignee_notify_channel": null
+    }
+  ],
+  "edges": [
+    {
+      "source_node_id": "n0_collect",
+      "next_node_id": "n6_review",
+      "condition": "default",
+      "priority": 1,
+      "label": "default"
+    },
+    {
+      "source_node_id": "n6_review",
+      "next_node_id": "n7_review",
+      "condition": "default",
+      "priority": 1,
+      "label": "default"
+    },
+    {
+      "source_node_id": "n7_review",
+      "next_node_id": "n9_aggregate",
+      "condition": "default",
+      "priority": 1,
+      "label": "default"
+    },
+    {
+      "source_node_id": "n9_aggregate",
+      "next_node_id": "n10_save",
+      "condition": "default",
+      "priority": 1,
+      "label": "default"
+    },
+    {
+      "source_node_id": "n10_save",
+      "next_node_id": "n11_report",
+      "condition": "default",
+      "priority": 1,
+      "label": "default"
+    }
+  ],
+  "start_node_id": "n0_collect",
+  "terminal_node_ids": [
+    "n11_report"
+  ],
+  "interruption_policy": {
+    "allow_interrupt": "true",
+    "description": "补充材料后继续",
+    "strategy": "resume_from_last_state"
+  }
+}

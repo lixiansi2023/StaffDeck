@@ -20,7 +20,8 @@ from pathlib import Path
 BACKEND = Path(__file__).resolve().parents[1]
 ROOT = BACKEND.parent
 SOP_JSON = BACKEND / "sop_exports" / "f02_non_eng_bidding_review.json"
-RULES_MD = ROOT / "docs" / "seeds" / "规则库_F02非工程招标点检.md"
+RULES_DIR = ROOT / "docs" / "seeds"
+RULES_GLOB = "规则_F02_R*.md"
 KB_NAME = "规则-非工程招标点检 F02"
 DEFAULT_AGENT_ID = "agent_77affcb6b0de4e11"
 CHECK_NODE_IDS = [f"n{i}_" for i in range(1, 9)]
@@ -58,19 +59,25 @@ def load_sop() -> dict:
     return json.loads(SOP_JSON.read_text(encoding="utf-8"))
 
 
+def load_rule_docs() -> list[Path]:
+    docs = sorted(RULES_DIR.glob(RULES_GLOB))
+    if not docs:
+        raise SystemExit(f"未找到 F02 规则文档：{RULES_DIR / RULES_GLOB}")
+    return docs
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="导入 F02 规则知识库并回填 SOP")
     parser.add_argument("--agent-id", default=DEFAULT_AGENT_ID, help="目标 agent id")
     parser.add_argument("--dry-run", action="store_true", help="只预览，不落库")
     args = parser.parse_args()
 
-    if not RULES_MD.exists():
-        raise SystemExit(f"规则文档不存在：{RULES_MD}")
+    rule_docs = load_rule_docs()
     sop = load_sop()
     if args.dry_run:
         print("DRY-RUN")
         print("  KB name:", KB_NAME)
-        print("  doc:", RULES_MD, "| bytes:", RULES_MD.stat().st_size)
+        print("  docs:", ", ".join(d.name for d in rule_docs))
         print("  agent:", args.agent_id)
         print("  nodes to backfill:", [n["node_id"] for n in sop["nodes"]
                                         if any(n["node_id"].startswith(p) for p in CHECK_NODE_IDS)])
@@ -96,51 +103,52 @@ def main() -> None:
                 description="F02 非工程招标采购文件点检的 8 条审核要素判定规则（含附件角色识别与结论口径）。",
                 capability_scope="sop_specific", status="active",
                 metadata_json={"rule_lib_version": "V1.0", "form_code": "F02",
-                               "source": "docs/seeds/规则库_F02非工程招标点检.md"},
+                               "source": "docs/seeds/规则_F02_R*.md"},
             )
             db.add(kb)
             db.commit()
             db.refresh(kb)
             print("新建知识库:", kb.id)
 
-        # 2) 导入文档（按文件名去重）
-        doc_name = RULES_MD.name
-        existing_doc = db.exec(
-            select(KnowledgeDocument).where(
-                KnowledgeDocument.tenant_id == tenant,
-                KnowledgeDocument.knowledge_base_id == kb.id,
-                KnowledgeDocument.filename == doc_name,
-            )
-        ).first()
-        if existing_doc:
-            print("文档已存在，跳过导入:", existing_doc.id, "| status:", existing_doc.status)
-            doc = existing_doc
-        else:
-            svc = KnowledgeService(db)
-            job = svc.create_ingest_job(IngestPayload(
-                tenant_id=tenant,
-                knowledge_base_id=kb.id,
-                filename=doc_name,
-                content_base64=base64.b64encode(RULES_MD.read_bytes()).decode("ascii"),
-                title="F02 非工程招标点检规则库",
-                metadata={"rule_lib_version": "V1.0"},
-            ))
-            svc._run_ingest_job(job.id)
-            doc = db.exec(
+        # 2) 导入文档（8 份规则各一篇，按文件名去重）
+        for rule_doc in rule_docs:
+            doc_name = rule_doc.name
+            existing_doc = db.exec(
                 select(KnowledgeDocument).where(
                     KnowledgeDocument.tenant_id == tenant,
                     KnowledgeDocument.knowledge_base_id == kb.id,
                     KnowledgeDocument.filename == doc_name,
                 )
             ).first()
-            if not doc:
-                raise SystemExit(f"导入后未找到文档：job={job.id} status={job.status}")
-            print("文档导入完成:", doc.id, "| status:", doc.status)
+            if existing_doc:
+                print("文档已存在，跳过导入:", doc_name, "| status:", existing_doc.status)
+                doc = existing_doc
+            else:
+                svc = KnowledgeService(db)
+                job = svc.create_ingest_job(IngestPayload(
+                    tenant_id=tenant,
+                    knowledge_base_id=kb.id,
+                    filename=doc_name,
+                    content_base64=base64.b64encode(rule_doc.read_bytes()).decode("ascii"),
+                    title=doc_name.removesuffix(".md"),
+                    metadata={"rule_lib_version": "V1.0", "rule_file": doc_name},
+                ))
+                svc._run_ingest_job(job.id)
+                doc = db.exec(
+                    select(KnowledgeDocument).where(
+                        KnowledgeDocument.tenant_id == tenant,
+                        KnowledgeDocument.knowledge_base_id == kb.id,
+                        KnowledgeDocument.filename == doc_name,
+                    )
+                ).first()
+                if not doc:
+                    raise SystemExit(f"导入后未找到文档：job={job.id} status={job.status}")
+                print("文档导入完成:", doc_name, "| status:", doc.status)
 
-        chunk_count = db.exec(
-            select(KnowledgeDocument.chunk_count).where(KnowledgeDocument.id == doc.id)
-        ).first()
-        print("文档分块数:", chunk_count)
+            chunk_count = db.exec(
+                select(KnowledgeDocument.chunk_count).where(KnowledgeDocument.id == doc.id)
+            ).first()
+            print("文档分块数:", doc_name, chunk_count)
 
         # 3) 绑定知识库到 agent（全量替换，保留既有绑定）
         bindings = db.exec(
@@ -210,7 +218,7 @@ def main() -> None:
         published = publish_skill(skill_id, tenant_id=tenant, agent_id=args.agent_id,
                                   db=db, current_user=admin)
         print("SOP 已重发布:", skill_id, "| status:", published.status)
-        print("完成：KB=", kb.id, "| DOC=", doc.id, "| 规则版本=V1.0")
+        print("完成：KB=", kb.id, "| 规则文档数=", len(rule_docs), "| 规则版本=V1.0")
 
 
 def cast_type(value: str):
