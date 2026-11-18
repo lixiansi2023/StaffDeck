@@ -2413,7 +2413,7 @@
   "已有动作": "Existing actions",
   "内置能力：{1}": "Built-in tool: {1}",
   "读取工作区中的 UTF-8 文本": "Read UTF-8 text in the workspace",
-  "将 PDF、DOCX 等受支持文档提取为文本": "Extract text from supported documents such as PDF and DOCX",
+  "将 PDF、DOCX、Excel 等受支持文档提取为文本": "Extract text from supported documents such as PDF, DOCX, and Excel",
   "查看工作区目录中的文件": "List files in a workspace directory",
   "查看文件类型、大小和校验信息": "View file type, size, and checksum",
   "按文件名模式查找工作区文件": "Find workspace files by name pattern",

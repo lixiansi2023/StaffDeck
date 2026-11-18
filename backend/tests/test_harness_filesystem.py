@@ -176,6 +176,53 @@ def test_extract_document_text_persists_docx_for_bounded_reading(tmp_path: Path)
     assert "合同审查内容" in str(read["content"])
 
 
+def test_extract_document_text_preserves_xlsx_cells_and_sheet_names(tmp_path: Path) -> None:
+    from openpyxl import Workbook
+
+    executor, context = _harness(tmp_path)
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "决策记录"
+    sheet["A1"] = "事项"
+    sheet["B1"] = "金额"
+    sheet["A2"] = "资金安排"
+    sheet["B2"] = 125.5
+    document = BytesIO()
+    workbook.save(document)
+    source = context.workspace_root / "attachments" / "decision.xlsx"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(document.getvalue())
+
+    extracted = _execute(
+        executor, context, "extract_document_text", {"path": "attachments/decision.xlsx"}
+    )
+    read = _execute(
+        executor, context, "read_file", {"path": extracted["extracted_text_path"]}
+    )
+    assert extracted["format"] == "xlsx"
+    assert "## 工作表：决策记录" in read["content"]
+    assert "A2=资金安排 | B2=125.5" in read["content"]
+
+
+def test_extract_document_text_preserves_xls_cells_and_sheet_names(tmp_path: Path) -> None:
+    executor, context = _harness(tmp_path)
+    source = context.workspace_root / "attachments" / "decision.xls"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(
+        (Path(__file__).parent / "fixtures" / "decision_sample.xls").read_bytes()
+    )
+
+    extracted = _execute(
+        executor, context, "extract_document_text", {"path": "attachments/decision.xls"}
+    )
+    read = _execute(
+        executor, context, "read_file", {"path": extracted["extracted_text_path"]}
+    )
+    assert extracted["format"] == "xls"
+    assert "## 工作表：决策记录" in read["content"]
+    assert "A2=资金安排 | B2=125.5" in read["content"]
+
+
 def test_extract_document_text_rejects_unsupported_binary(tmp_path: Path) -> None:
     executor, context = _harness(tmp_path)
     context.workspace_root.mkdir(parents=True)

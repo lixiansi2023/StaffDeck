@@ -95,6 +95,8 @@ def attachment_context_lines(attachments: Iterable[ChatAttachmentRead | dict[str
             ".pdf",
             ".doc",
             ".docx",
+            ".xlsx",
+            ".xls",
             ".html",
             ".htm",
         }:

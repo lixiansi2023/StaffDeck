@@ -441,7 +441,7 @@ const BASE_ACTION_OPTIONS: SelectOption[] = [
 
 const BUILTIN_FILE_ACTION_OPTIONS: SelectOption[] = [
   { value: 'call_tool:read_file', label: '读取文本文件', description: '读取工作区中的 UTF-8 文本' },
-  { value: 'call_tool:extract_document_text', label: '提取文档内容', description: '将 PDF、DOCX 等受支持文档提取为文本' },
+  { value: 'call_tool:extract_document_text', label: '提取文档内容', description: '将 PDF、DOCX、Excel 等受支持文档提取为文本' },
   { value: 'call_tool:list_directory', label: '查看文件目录', description: '查看工作区目录中的文件' },
   { value: 'call_tool:file_info', label: '查看文件信息', description: '查看文件类型、大小和校验信息' },
   { value: 'call_tool:glob', label: '按名称查找文件', description: '按文件名模式查找工作区文件' },

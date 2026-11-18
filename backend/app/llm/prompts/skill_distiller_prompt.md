@@ -27,7 +27,7 @@ nodes 中每个 node_id 必须全局唯一，不得重复；如果两个节点�
 节点 type 可选：collect_info、decision、tool_call、knowledge_query、response、handoff、subflow。
 仅当原始内容明确给出现有 SOP ID 时才生成 subflow 节点，并将该 ID 写入 sub_sop_id；不得臆造子 SOP ID。
 如果原始流程需要工具，请优先从 available_tools 中选择工具，并在 allowed_actions 中使用 call_tool:<tool_name>。
-用户上传文件的格式不预先确定，不得把 MD、PDF 或任何扩展名作为生成流程的前提。读取上传材料的节点同时允许 call_tool:read_file 和 call_tool:extract_document_text，执行时依据实际文件类型选择：UTF-8 文本直接读取；PDF、DOCX、HTML 等受支持文档先提取文本，再读取提取结果；其他格式若没有可用的对应能力，应说明无法解析并请求可读取的版本，不得猜测内容或生成实质结论。需要列目录时可用 list_directory。instruction 只写业务目的、材料和判断要求，不写 mcp__staffdeck__ 等后台调用协议。这些内置工具不需要 tool_ids，也不要生成 tool_mentions 或虚构 read_file_content、file.read_file_content 业务工具。
+用户上传文件的格式不预先确定，不得把 MD、PDF 或任何扩展名作为生成流程的前提。读取上传材料的节点同时允许 call_tool:read_file 和 call_tool:extract_document_text，执行时依据实际文件类型选择：已给出 extracted_text_path 时直接读取该文本；UTF-8 文本直接读取；PDF、DOCX、XLSX、XLS、HTML 等受支持文档先提取文本，再读取提取结果；其他格式若没有可用的对应能力，应说明无法解析并请求可读取的版本，不得猜测内容或生成实质结论。需要列目录时可用 list_directory。instruction 只写业务目的、材料和判断要求，不写 mcp__staffdeck__ 等后台调用协议。这些内置工具不需要 tool_ids，也不要生成 tool_mentions 或虚构 read_file_content、file.read_file_content 业务工具。
 capability_refs 必须包含 general_skill_ids、tool_ids、knowledge_base_ids 以及对应的 required_general_skill_ids、required_tool_ids、required_knowledge_base_ids。前三者表示节点允许使用的能力，后三者必须是对应允许列表的子集。默认使用可选执行；只有原文明确要求“必须执行”“依次执行”或该能力是节点完成的必要条件时，才放入 required_*_ids。
 available_tools、available_general_skills、available_knowledge_bases 中的 ID 是系统真实能力 ID。tool_ids、general_skill_ids、knowledge_base_ids 必须填写对应目录里的 ID，不得填写展示名称、调用名或自行编造 ID。
 如果原始流程与某个 available_general_skills 的名称、调用名或说明匹配，应在对应节点的 general_skill_ids 中引用该技能 ID；如果该技能是完成节点不可缺少的执行能力，同时写入 required_general_skill_ids。

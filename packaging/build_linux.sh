@@ -81,7 +81,7 @@ fi
 
 echo "==> [3/8] Preparing portable Python 3.11 runtime"
 BUILD_PY="$RUNTIME_DL_ROOT/python/bin/python3"
-if [[ -x "$BUILD_PY" ]] && "$BUILD_PY" -c "import requests, docx, openpyxl" 2>/dev/null; then
+if [[ -x "$BUILD_PY" ]] && "$BUILD_PY" -c "import requests, docx, openpyxl, xlrd" 2>/dev/null; then
   echo "Reusing verified Python runtime at $BUILD_PY"
 else
   python3 packaging/fetch_runtime_python.py "$RUNTIME_DL_DIR" --expect-arch x86_64

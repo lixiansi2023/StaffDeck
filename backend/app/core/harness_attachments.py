@@ -18,6 +18,7 @@ from app.harness import (
     HarnessToolContext,
     build_file_tool_registry,
 )
+from app.harness.execution_context import SANDBOX_WORKSPACE
 from app.session.attachments import (
     IMAGE_DATA_URL_LIMIT_BYTES,
     image_payloads_from_attachments,
@@ -106,6 +107,29 @@ def materialize_task_attachments(
                         "note": "原始附件已写入当前 TaskFrame 沙箱。",
                     }
                 )
+                if Path(attachment.filename).suffix.lower() in {".pdf", ".docx", ".xlsx", ".xls"}:
+                    extracted_result = executor.execute(
+                        context,
+                        HarnessToolCall(
+                            call_id=f"attachment-extract-{index}",
+                            name="extract_document_text",
+                            arguments={"path": sandbox_path},
+                        ),
+                    )
+                    if extracted_result.success:
+                        extracted = dict(extracted_result.data or {})
+                        if not extracted.get("empty"):
+                            descriptor["extracted_text_path"] = (
+                                f"{SANDBOX_WORKSPACE}/{extracted['extracted_text_path']}"
+                            )
+                        else:
+                            descriptor["extraction_error"] = "文档未提取到可读取的文本。"
+                    else:
+                        descriptor["extraction_error"] = (
+                            extracted_result.error.message
+                            if extracted_result.error is not None
+                            else "文档文本提取失败。"
+                        )
             except OSError as exc:
                 descriptor.update(
                     {
@@ -113,7 +137,7 @@ def materialize_task_attachments(
                         "error": f"附件写入失败：{type(exc).__name__}",
                     }
                 )
-            if attachment.kind == "pdf" and attachment.text:
+            if attachment.kind == "pdf" and attachment.text and "extracted_text_path" not in descriptor:
                 extracted_path = f"{sandbox_path}.extracted.txt"
                 extracted_result = executor.execute(
                     context,
@@ -129,6 +153,7 @@ def materialize_task_attachments(
                 )
                 if extracted_result.success:
                     descriptor["extracted_text_path"] = extracted_path
+                    descriptor.pop("extraction_error", None)
         elif attachment.text:
             sandbox_path = sandbox_attachment_path(attachment, index)
             result = executor.execute(

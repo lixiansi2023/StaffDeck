@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sys
+from io import BytesIO
 from copy import deepcopy
 from datetime import timedelta
 from types import SimpleNamespace
@@ -1237,6 +1238,81 @@ def test_staged_image_is_both_a_sandbox_file_and_vision_payload(
     assert (workspace / sandbox_path.removeprefix("/workspace/")).read_bytes() == raw
     assert len(payloads) == 1
     assert payloads[0].data_url == attachment.data_url
+
+
+def test_staged_docx_is_extracted_before_task_execution(tmp_path, monkeypatch) -> None:
+    from docx import Document
+
+    monkeypatch.setenv("ULTRARAG_DATA_DIR", str(tmp_path / "data"))
+    document = Document()
+    document.add_paragraph("决策事项已履行内部审批程序。")
+    content = BytesIO()
+    document.save(content)
+    raw = content.getvalue()
+    attachment = stage_chat_attachment(
+        ChatAttachmentRead(
+            id="decision-docx",
+            filename="决策.docx",
+            content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            size=len(raw),
+            kind="binary",
+        ),
+        raw,
+        tenant_id="tenant-demo",
+        user_id="user-demo",
+    )
+
+    descriptors = materialize_task_attachments(
+        [attachment],
+        tenant_id="tenant-demo",
+        user_id="user-demo",
+        session_id="session-docx",
+        task_frame_id="task-docx",
+    )
+    workspace = harness_task_workspace_path(
+        tenant_id="tenant-demo",
+        session_id="session-docx",
+        task_frame_id="task-docx",
+    )
+    descriptor = descriptors[0]
+    assert descriptor["materialized"] is True
+    assert descriptor["extracted_text_path"].startswith("/workspace/attachments/")
+    extracted_path = workspace / descriptor["extracted_text_path"].removeprefix("/workspace/")
+    assert "决策事项已履行内部审批程序" in extracted_path.read_text(encoding="utf-8")
+
+
+def test_staged_xlsx_is_extracted_before_task_execution(tmp_path, monkeypatch) -> None:
+    from openpyxl import Workbook
+
+    monkeypatch.setenv("ULTRARAG_DATA_DIR", str(tmp_path / "data"))
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "资金明细"
+    sheet["A1"] = "贷款余额"
+    sheet["B1"] = 300
+    content = BytesIO()
+    workbook.save(content)
+    raw = content.getvalue()
+    attachment = stage_chat_attachment(
+        ChatAttachmentRead(
+            id="funds-xlsx", filename="资金明细.xlsx",
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            size=len(raw), kind="binary",
+        ),
+        raw, tenant_id="tenant-demo", user_id="user-demo",
+    )
+
+    descriptors = materialize_task_attachments(
+        [attachment], tenant_id="tenant-demo", user_id="user-demo",
+        session_id="session-xlsx", task_frame_id="task-xlsx",
+    )
+    workspace = harness_task_workspace_path(
+        tenant_id="tenant-demo", session_id="session-xlsx", task_frame_id="task-xlsx",
+    )
+    descriptor = descriptors[0]
+    assert descriptor["materialized"] is True
+    text_path = workspace / descriptor["extracted_text_path"].removeprefix("/workspace/")
+    assert "A1=贷款余额 | B1=300" in text_path.read_text(encoding="utf-8")
 
 
 def test_capability_manifest_only_exposes_current_step_sop_specific_resources() -> None:

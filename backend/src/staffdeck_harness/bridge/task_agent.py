@@ -252,7 +252,7 @@ def _step_prompt(requirement: TaskRequirement, state: PipelineState, decision_co
             if not isinstance(d, dict):
                 continue
             key = str(d.get("attachment_id") or d.get("filename") or d.get("id") or "")
-            summary[key] = {k: d.get(k) for k in ("filename", "kind", "content_type", "size", "workspace_relative_path", "sandbox_path", "preview", "note") if d.get(k) not in (None, "")}
+            summary[key] = {k: d.get(k) for k in ("filename", "kind", "content_type", "size", "workspace_relative_path", "sandbox_path", "extracted_text_path", "extraction_error", "materialized", "preview", "note") if d.get(k) not in (None, "")}
         if summary:
             parts.append("# 附件\n" + json.dumps(json_safe(summary, path="$.attachments"), ensure_ascii=False, indent=1, allow_nan=False))
     if requirement.source_user_message:

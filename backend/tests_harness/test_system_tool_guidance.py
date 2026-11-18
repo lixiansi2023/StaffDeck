@@ -20,11 +20,30 @@ def test_initial_prompt_teaches_actual_system_tools_before_user_input():
     assert "capabilities" not in guide.split("## 可调用接口")[1].split("## 报错后的处理")[0]
     assert '"tool_id"' in guide and '"resource_id"' in guide
     assert '"tool":"read_file","arguments":{"path":' in guide
+    assert '"tool":"extract_document_text","arguments":{"path":' in guide
+    assert "extracted_text_path" in guide
     assert "不会扩大授权" in guide and "不重新提交" in guide
     prompt = _step_prompt(TaskRequirement(task_frame_id="t", kind="conversation", goal="test",
         current_user_message="USER-MARKER"), PipelineState(CompositionCompiler(hooks=()).compile(_staff())), [], "", system_tools=names)
     assert prompt.index("# 平台系统工具") < prompt.index("USER-MARKER")
     assert "mcp__staffdeck__submit_step_result" not in guide
+
+
+def test_step_prompt_exposes_preextracted_document_path():
+    requirement = TaskRequirement(
+        task_frame_id="t", kind="sop", goal="读取决策文件",
+        attachments=[{
+            "attachment_id": "docx", "filename": "决策.docx", "kind": "binary",
+            "sandbox_path": "/workspace/attachments/decision.docx",
+            "extracted_text_path": "/workspace/attachments/decision.docx.extracted.txt",
+            "materialized": True,
+        }],
+    )
+    prompt = _step_prompt(
+        requirement, PipelineState(CompositionCompiler(hooks=()).compile(_staff())),
+        [], "", system_tools=set(PROXY_TOOLS),
+    )
+    assert '"extracted_text_path": "/workspace/attachments/decision.docx.extracted.txt"' in prompt
 
 
 def test_guide_does_not_advertise_unavailable_tool_proxies_and_sop_control_is_explicit():

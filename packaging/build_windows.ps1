@@ -159,7 +159,7 @@ if ($signingConfigured) {
 }
 
 & packaging\out\staffdeck\runtime\python.exe -c `
-  "import ssl, sqlite3, requests, docx, openpyxl; print(sqlite3.sqlite_version)"
+  "import ssl, sqlite3, requests, docx, openpyxl, xlrd; print(sqlite3.sqlite_version)"
 Assert-NativeCommandSucceeded "Final bundled Python runtime smoke test"
 
 Write-Host "==> [5/6] Build the Inno Setup installer"

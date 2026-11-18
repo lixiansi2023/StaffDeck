@@ -7,7 +7,10 @@ from pathlib import Path
 from zipfile import ZipFile
 
 
-SUPPORTED_EXTENSIONS = {".txt", ".md", ".markdown", ".html", ".htm", ".pdf", ".docx", ".doc"}
+SUPPORTED_EXTENSIONS = {
+    ".txt", ".md", ".markdown", ".html", ".htm", ".pdf", ".docx", ".doc",
+    ".xlsx", ".xls",
+}
 
 
 class KnowledgeParseError(ValueError):
@@ -28,6 +31,10 @@ def extract_text(filename: str, content: bytes) -> tuple[str, str]:
         return _extract_pdf(content), "pdf"
     if suffix == ".docx":
         return _extract_docx(content), "docx"
+    if suffix == ".xlsx":
+        return _extract_xlsx(content), "xlsx"
+    if suffix == ".xls":
+        return _extract_xls(content), "xls"
     raise KnowledgeParseError(f"暂不支持 {suffix} 文件格式。")
 
 
@@ -107,6 +114,81 @@ def _extract_docx_with_zip(content: bytes) -> str:
     parser = _DocxTextExtractor()
     parser.feed(xml)
     return parser.text
+
+
+def _extract_xlsx(content: bytes) -> str:
+    try:
+        from openpyxl import load_workbook
+    except ImportError as exc:
+        raise KnowledgeParseError("缺少 openpyxl，无法解析 XLSX。") from exc
+    try:
+        workbook = load_workbook(BytesIO(content), read_only=True, data_only=False, keep_links=False)
+    except Exception as exc:
+        raise KnowledgeParseError("无法解析 xlsx 工作簿。") from exc
+    sections: list[str] = []
+    try:
+        for sheet in workbook.worksheets:
+            rows = [f"## 工作表：{sheet.title}"]
+            for row in sheet.iter_rows():
+                cells = [
+                    f"{cell.coordinate}={_spreadsheet_value(cell.value)}"
+                    for cell in row if cell.value is not None and str(cell.value).strip()
+                ]
+                if cells:
+                    rows.append(" | ".join(cells))
+            sections.append("\n".join(rows))
+    finally:
+        workbook.close()
+    return "\n\n".join(sections)
+
+
+def _extract_xls(content: bytes) -> str:
+    try:
+        import xlrd
+    except ImportError as exc:
+        raise KnowledgeParseError("缺少 xlrd，无法解析 XLS。") from exc
+    try:
+        workbook = xlrd.open_workbook(file_contents=content, on_demand=True)
+    except Exception as exc:
+        raise KnowledgeParseError("无法解析 xls 工作簿。") from exc
+    sections: list[str] = []
+    try:
+        for sheet in workbook.sheets():
+            rows = [f"## 工作表：{sheet.name}"]
+            for row_index in range(sheet.nrows):
+                cells = []
+                for col_index in range(sheet.ncols):
+                    cell = sheet.cell(row_index, col_index)
+                    if cell.ctype in (xlrd.XL_CELL_EMPTY, xlrd.XL_CELL_BLANK):
+                        continue
+                    value = cell.value
+                    if cell.ctype == xlrd.XL_CELL_DATE:
+                        value = xlrd.xldate_as_datetime(value, workbook.datemode)
+                    cells.append(
+                        f"{_spreadsheet_column(col_index)}{row_index + 1}="
+                        f"{_spreadsheet_value(value)}"
+                    )
+                if cells:
+                    rows.append(" | ".join(cells))
+            sections.append("\n".join(rows))
+    finally:
+        workbook.release_resources()
+    return "\n\n".join(sections)
+
+
+def _spreadsheet_column(index: int) -> str:
+    letters = ""
+    while index >= 0:
+        index, remainder = divmod(index, 26)
+        letters = chr(65 + remainder) + letters
+        index -= 1
+    return letters
+
+
+def _spreadsheet_value(value: object) -> str:
+    if hasattr(value, "isoformat"):
+        value = value.isoformat()
+    return str(value).replace("\r", " ").replace("\n", " / ").strip()
 
 
 class _HTMLTextExtractor(HTMLParser):

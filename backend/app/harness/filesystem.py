@@ -1042,9 +1042,9 @@ def register_file_tools(registry: HarnessRegistry) -> HarnessRegistry:
         name="extract_document_text",
         description=(
             path_contract
-            + "Extract PDF, DOCX, HTML, Markdown, or plain-text content into a UTF-8 "
+            + "Extract PDF, DOCX, XLSX, XLS, HTML, Markdown, or plain-text content into a UTF-8 "
             "file, then use read_file to inspect the extracted text. Use this "
-            "instead of read_file for binary documents such as PDF and DOCX."
+            "instead of read_file for binary documents such as PDF, DOCX, and Excel."
         ),
         argument_model=ExtractDocumentTextArguments,
         handler=extract_document_text,

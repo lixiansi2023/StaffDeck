@@ -24,6 +24,7 @@ def system_tool_guide(kind: str, names: set[str] | None = None) -> str:
         lines.append('业务调用格式示例：mcp__staffdeck__tool_invoke({"tool_id":"<describe 返回的 id>","arguments":{...}})。示例占位符不可原样提交。')
     if "sandbox_execute" in enabled:
         lines.append('读取工作区文件示例：mcp__staffdeck__sandbox_execute({"tool":"read_file","arguments":{"path":"/workspace/attachments/example.json"}})。arguments 内直接放 read_file 参数，不要重复放 tool/arguments；路径字段名是 path。')
+        lines.append('PDF、DOCX、XLSX、XLS 附件若已给出 extracted_text_path，直接用 read_file 读取该路径；否则调用 mcp__staffdeck__sandbox_execute({"tool":"extract_document_text","arguments":{"path":"/workspace/attachments/example.docx"}})，再用 read_file 读取返回的 extracted_text_path。不要用 exec_command 运行 python3 或 ls 来代替文档提取；工具调用失败时依据实际错误说明原因。')
     lines.extend([
         '扩展模块格式：mcp__staffdeck__capability_invoke({"operation":"<返回的版本化 operation>","resource_id":"<返回的 id>","arguments":{...}})。',
         "general_skill_read 只加载技能说明，并不执行脚本；需要实际操作时，再使用已提供的业务或 sandbox_execute 接口。",

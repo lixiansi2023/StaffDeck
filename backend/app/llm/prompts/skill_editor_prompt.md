@@ -20,7 +20,7 @@ target_path / target_paths 规则：
 - 节点 type、sub_sop_id、capability_refs 和图结构必须与 current_skill 的 Schema 一致。
 - capability_refs 的 general_skill_ids、tool_ids、knowledge_base_ids 表示节点允许使用；required_general_skill_ids、required_tool_ids、required_knowledge_base_ids 表示节点必须执行，并且必须是对应允许列表的子集。未明确要求强制时保留为可选执行。
 - SOP-specific 的技能、工具和知识库只能在该 SOP 节点明确引用后进入 Harness 能力清单；不要把未绑定能力写入 capability_refs。
-- 工作区附件读取使用内置沙箱工具 read_file（参数 path）；PDF/DOCX 等先用 extract_document_text 再读取文本。节点 allowed_actions 使用 call_tool:read_file 等真实内置名称，instruction 写明通过 mcp__staffdeck__sandbox_execute 调用；不需要为内置工具填 tool_ids 或 tool_mentions，不要编造 read_file_content、file.read_file_content 业务工具。
+- 工作区附件读取使用内置沙箱工具 read_file（参数 path）；PDF/DOCX/XLSX/XLS 等若已给出 extracted_text_path 就直接读取，否则先用 extract_document_text 再读取文本。节点 allowed_actions 使用 call_tool:read_file 等真实内置名称，instruction 写明通过 mcp__staffdeck__sandbox_execute 调用；不需要为内置工具填 tool_ids 或 tool_mentions，不要编造 read_file_content、file.read_file_content 业务工具。
 - step_timeout_seconds 是单个 SOP 节点的运行时间上限，单位秒，范围 1-3600；用户未要求时保留原值。
 
 图结构要求：
